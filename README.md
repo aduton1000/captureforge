@@ -33,32 +33,48 @@ drives tiling density, masking policy, GC policy, and boosting.
 
 ## Install
 
+**Yes — clone the repository first.** CaptureForge is the repo: the env file, `main.nf`, the `bin/` tools,
+and `env/` Dockerfile/def all live here, so every command below (and in *Quickstart*) is run **from the
+repository root**. You install and run it **entirely on a laptop or workstation — no HPC required** (a
+shared-cluster install is also supported; see `docs/manual` and `docs/hpc_deployment.md`).
+
 ```bash
-# 1. Nextflow (needs Java 17+)
+# 1. Clone the repository, then cd into it (all later commands run from here)
+git clone https://github.com/aduton1000/captureforge.git
+cd captureforge
+
+# 2. Nextflow (needs Java 17+) — or just use the bundled launcher at ./.tools/nextflow
 curl -s https://get.nextflow.io | bash && sudo mv nextflow /usr/local/bin/
 
-# 2. conda/mamba environments (pinned) — or use the container (see env/)
-mamba env create -f env/captureforge.yml      # creates the `captureforge` env
+# 3. Pinned conda/mamba environment (creates the `captureforge` env)
+mamba env create -f env/captureforge.yml                         # Linux (native)
+CONDA_SUBDIR=osx-64 mamba env create -f env/captureforge.yml     # macOS Apple Silicon (Rosetta)
 
-# 3. (optional) containers
-docker build -t captureforge:0.1.0 -f env/Dockerfile .        # Mac dev
-apptainer build captureforge.sif env/captureforge.def         # HPC
+# 4. (optional) containers instead of conda
+docker build -t captureforge:0.1.0 -f env/Dockerfile .           # Mac/Linux dev
+apptainer build captureforge.sif env/captureforge.def            # HPC
 ```
+
+You also need reference data (a no-alt genome FASTA + GTF, and a specificity index built from it) — see
+*Reference data* below and the *Quickstart*. The manual (`docs/manual`) walks through both a laptop install
+and a shared-HPC install in full.
 
 ## Quickstart
 
 ### ▶ Starting from **just a gene list** (recommended on-ramp for new panels)
 
-You have nothing but gene symbols, one per line, in `my_genes.txt`:
+Prerequisite: you have *Install*ed (cloned the repo + built the env) and are in the repository root with the
+env active (`conda activate captureforge`). You have nothing but gene symbols, one per line, in `my_genes.txt`:
 
 ```bash
 # 1. Scaffold an editable design-spec CSV pre-filled with default design classes
 python bin/init_gene_list.py my_genes.txt -o my_panel.spec.csv
 
-# 2. (optional) open my_panel.spec.csv and add promoter / cnv / str / anchor intent per gene
+# 2. (optional) edit my_panel.spec.csv to add promoter / regulatory / cnv / str / anchor intent per gene
+#    (skip this to keep the defaults: coding exons + promoter)
 
 # 3. Build the specificity index FROM THE NO-ALT genome (one-time; required)
-bin/build_specificity_index.sh --fasta refs/GRCh38.noalt.fa --aligner blast --out refs/grch38_noalt
+bin/build_specificity_index.sh --fasta refs/GRCh38.noalt.fa --aligner blast --out $PWD/refs/grch38_noalt
 
 # 4. Run the pipeline
 nextflow run main.nf -profile mac_local,conda \
