@@ -124,8 +124,8 @@ def main():
             why.append("homopolymer")
         if ent < args.min_entropy:
             why.append("low_complexity")
-        if not (args.tm_min <= tm <= args.tm_max) and not math.isnan(tm):
-            why.append("Tm")
+        if math.isnan(tm) or not (args.tm_min <= tm <= args.tm_max):
+            why.append("Tm")            # NaN Tm (e.g. N-containing bait) can't be validated → reject
         if dg is not None and dg < args.deltaG_min:
             why.append("structure")
 
@@ -146,6 +146,7 @@ def main():
     vout.close(); pass_bed.close(); pass_fa.close()
 
     def hist(vals, lo, hi, n=20):
+        vals = [v for v in vals if v == v]      # drop NaN defensively
         if not vals:
             return {}
         w = (hi - lo) / n

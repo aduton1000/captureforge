@@ -21,9 +21,9 @@ process APPLY_MASKING {
     path "stage2_summary.json",       emit: summary
 
     script:
-    def rmsk_arg = rmsk.name    != 'NO_FILE' ? "--rmsk ${rmsk}"       : ''
-    def seg_arg  = segdups.name != 'NO_FILE' ? "--segdups ${segdups}" : ''
-    def sr_arg   = simplerepeat.name != 'NO_FILE' ? "--simplerepeat ${simplerepeat}" : ''
+    def rmsk_arg = rmsk.name.startsWith('NO_')    ? '' : "--rmsk ${rmsk}"
+    def seg_arg  = segdups.name.startsWith('NO_') ? '' : "--segdups ${segdups}"
+    def sr_arg   = simplerepeat.name.startsWith('NO_') ? '' : "--simplerepeat ${simplerepeat}"
     """
     apply_masking.py \\
         --raw ${raw_bed} --fasta ${fasta} \\

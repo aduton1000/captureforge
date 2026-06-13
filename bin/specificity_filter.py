@@ -18,9 +18,72 @@ full-length hit (its source locus); off_target_count = (qualifying hits) - 1.
 Outputs: candidates.spec.tsv (per-bait verdict), candidates.pass.bed, summary JSON.
 """
 from __future__ import annotations
-import argparse, json, re, subprocess, sys
+import argparse, json, os, re, subprocess, sys
 from collections import defaultdict
 from pathlib import Path
+
+
+# Contigs that must NOT be in a specificity reference: alt haplotypes, decoys,
+# HLA/MHC alternates. Unplaced/unlocalized scaffolds (KI*/GL*) ARE part of the
+# no-alt analysis set and are allowed.
+ALT_RE = re.compile(r"(_alt\b|HSCHR|_MHC_|\bMHC_|HLA[-_]|_decoy|hs38d1|chrUn_.*decoy|EBV)", re.I)
+
+
+def db_seqnames(db, aligner):
+    """Best-effort enumeration of the specificity reference's sequence names."""
+    try:
+        if aligner == "blast":
+            out = subprocess.run(["blastdbcmd", "-db", db, "-entry", "all", "-outfmt", "%t"],
+                                 capture_output=True, text=True, timeout=120)
+            return [ln.split()[0] for ln in out.stdout.splitlines() if ln.strip()]
+        if aligner == "bowtie2":
+            out = subprocess.run(["bowtie2-inspect", "-n", db], capture_output=True, text=True, timeout=120)
+            return [ln.strip() for ln in out.stdout.splitlines() if ln.strip()]
+        if aligner == "bwa":                                  # names live in <db>.ann
+            ann = db + ".ann"
+            if os.path.exists(ann):
+                names = []
+                with open(ann) as fh:
+                    next(fh, None)
+                    for i, ln in enumerate(fh):
+                        if i % 2 == 0 and ln.split():
+                            names.append(ln.split()[0])
+                return names
+    except Exception as e:
+        sys.stderr.write(f"[specificity] WARN could not enumerate db contigs ({e}); ref-invariant check skipped\n")
+    return []
+
+
+def assert_noalt_reference(db, aligner, genome_fai=None):
+    """FAIL LOUD if the specificity reference contains alt/decoy/HLA contigs, or
+    if it disagrees with the design genome. This prevents the classic trap of
+    pointing CaptureForge at a convenient toplevel/with-alt BLAST db, which makes
+    MHC-region genes (e.g. GENE) look non-specific vs their own alt haplotypes."""
+    import os
+    names = db_seqnames(db, aligner)
+    if not names:
+        return
+    alts = sorted({n for n in names if ALT_RE.search(n)})
+    if alts:
+        sys.stderr.write(
+            "\nERROR: specificity reference contains ALT/decoy/HLA contigs — specificity MUST run against "
+            "the NO-ALT primary assembly (the same reference as --genome_fasta). Offending contigs:\n"
+            + "".join(f"   - {a}\n" for a in alts[:20])
+            + (f"   … (+{len(alts)-20} more)\n" if len(alts) > 20 else "")
+            + "Rebuild from the no-alt genome:\n"
+              f"   bin/build_specificity_index.sh --fasta <primary_no_alt.fa> --aligner {aligner} --out <prefix>\n")
+        sys.exit(3)
+    if genome_fai and os.path.exists(genome_fai):
+        gnames = {l.split('\t')[0] for l in open(genome_fai)}
+        dnames = set(names)
+        extra = dnames - gnames
+        if extra:
+            sys.stderr.write(
+                f"ERROR: specificity db and --genome_fasta are DIFFERENT references "
+                f"({len(extra)} db contigs absent from the genome, e.g. {sorted(extra)[:5]}). "
+                f"They must be the same no-alt reference.\n")
+            sys.exit(3)
+    sys.stderr.write(f"[specificity] reference invariant OK: {len(names)} contigs, no alt/decoy/HLA.\n")
 
 
 def read_bed(path):
@@ -96,10 +159,15 @@ def main():
     ap.add_argument("--max-offtarget", type=int, default=1,
                     help="tolerated off-target hits; reject if off_target_count > this")
     ap.add_argument("--threads", type=int, default=4)
+    ap.add_argument("--genome-fai", default=None, help="design genome .fai for same-reference cross-check")
+    ap.add_argument("--no-ref-check", action="store_true", help="skip the no-alt reference invariant (not recommended)")
     ap.add_argument("-o", "--output", required=True, help="candidates.pass.bed")
     ap.add_argument("--verdicts", required=True, help="candidates.spec.tsv")
     ap.add_argument("--summary", default=None)
     args = ap.parse_args()
+
+    if not args.no_ref_check:
+        assert_noalt_reference(args.db, args.aligner, args.genome_fai)
 
     bed = read_bed(args.candidates_bed)
     qlens = qlen_from_fasta(args.candidates)

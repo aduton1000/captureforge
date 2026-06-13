@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# ═══════════════════════════════════════════════════════════════════════════
+#  CaptureForge — bin/build_specificity_index.sh
+#  Build the Stage-4 specificity index FROM THE DESIGN GENOME so specificity is
+#  measured against exactly the reference the baits target.
+#
+#  IMPORTANT: use the NO-ALT primary assembly. Indexing a toplevel/with-alt
+#  reference makes genes in the MHC and other alt-haplotype regions look
+#  non-specific against their own alternate-haplotype copies (false off-targets).
+#
+#  Usage:
+#    bin/build_specificity_index.sh --fasta GRCh38.primary.fa --aligner blast   --out refs/grch38_noalt
+#    bin/build_specificity_index.sh --fasta GRCh38.primary.fa --aligner bowtie2 --out refs/grch38_bt2
+# ═══════════════════════════════════════════════════════════════════════════
+set -euo pipefail
+FASTA=""; ALIGNER="blast"; OUT=""
+while [[ $# -gt 0 ]]; do case "$1" in
+  --fasta) FASTA="$2"; shift 2;;
+  --aligner) ALIGNER="$2"; shift 2;;
+  --out) OUT="$2"; shift 2;;
+  -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
+  *) echo "unknown arg: $1" >&2; exit 1;;
+esac; done
+[[ -s "$FASTA" ]] || { echo "ERROR: --fasta required and must exist" >&2; exit 1; }
+[[ -n "$OUT" ]] || { echo "ERROR: --out prefix required" >&2; exit 1; }
+mkdir -p "$(dirname "$OUT")"
+
+# warn if the FASTA looks like it contains alt contigs
+if grep -qiE 'HSCHR|_alt|MHC_' "${FASTA}.fai" 2>/dev/null || grep -qiE '^>.*(HSCHR|_alt|MHC_)' "$FASTA"; then
+  echo "WARNING: '$FASTA' appears to contain ALT contigs — specificity will over-reject MHC/segdup genes." >&2
+fi
+
+case "$ALIGNER" in
+  blast)    echo "[build] makeblastdb → ${OUT}";   makeblastdb -in "$FASTA" -dbtype nucl -out "$OUT" -title "$(basename "$OUT")" ;;
+  bowtie2)  echo "[build] bowtie2-build → ${OUT}";  bowtie2-build --threads "${THREADS:-4}" "$FASTA" "$OUT" ;;
+  bwa)      echo "[build] bwa index → ${OUT}";      bwa index -p "$OUT" "$FASTA" ;;
+  *) echo "ERROR: --aligner must be blast|bowtie2|bwa" >&2; exit 1;;
+esac
+echo "[build] done: ${OUT} (aligner=${ALIGNER})"

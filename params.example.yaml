@@ -15,16 +15,23 @@ genome_fasta:     /path/to/GRCh38.noalt.fa
 gtf:              refs/Homo_sapiens.GRCh38.112.gtf.gz
 mane_gff:         refs/MANE.GRCh38.v1.4.ensembl_genomic.gff.gz   # optional (GTF already carries MANE_Select tags)
 regulatory_gff:   refs/Homo_sapiens.GRCh38.regulatory_features.gff.gz   # optional
-rmsk_bed:         refs/rmsk.GRCh38.bed.gz        # optional
-segdups_bed:      refs/segdups.GRCh38.bed.gz     # optional
-dbsnp_vcf:        refs/dbsnp.GRCh38.vcf.gz       # optional (rsID anchors)
+rmsk_bed:         refs/rmsk.GRCh38.txt.gz        # optional (STR/repeat masking)
+simplerepeat_bed: refs/simpleRepeat.GRCh38.txt.gz # optional (STR core removal)
+segdups_bed:      refs/genomicSuperDups.GRCh38.txt.gz  # optional
+dbsnp_vcf:        refs/dbsnp.GRCh38.vcf.gz       # optional (rsID anchors; or use rsid_bed)
+rsid_bed:         refs/anchors.rsid.bed          # optional (resolve_rsids.py output)
 ensembl_release:  112
 
 # ---- Bait geometry ----
 bait_len:     120
 
-# ---- Specificity thresholds ----
-specificity_aligner:    bowtie2
+# ---- Specificity ----
+# IMPORTANT: specificity_db MUST be built from the NO-ALT primary assembly
+# (same as genome_fasta). Indexing a toplevel/with-alt reference makes MHC and
+# other alt-haplotype genes (e.g. GENE) look non-specific vs their own alt copies.
+#   bin/build_specificity_index.sh --fasta <primary.fa> --aligner blast --out refs/grch38_noalt
+specificity_aligner:    blast            # blast | bowtie2 | bwa
+specificity_db:         refs/grch38_noalt
 offtarget_min_identity: 0.90
 offtarget_min_lenfrac:  0.50
 offtarget_max_hits:     1

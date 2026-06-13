@@ -45,9 +45,9 @@ process DEFINE_TARGETS {
     path "stage1_summary.json", emit: summary
 
     script:
-    def dbsnp_arg = dbsnp.name != 'NO_FILE'      ? "--dbsnp ${dbsnp}"           : ''
-    def reg_arg   = regulatory.name != 'NO_FILE' ? "--regulatory ${regulatory}" : ''
-    def rsid_arg  = rsid_bed.name != 'NO_FILE'   ? "--rsid-bed ${rsid_bed}"     : ''
+    def dbsnp_arg = dbsnp.name.startsWith('NO_')      ? '' : "--dbsnp ${dbsnp}"
+    def reg_arg   = regulatory.name.startsWith('NO_') ? '' : "--regulatory ${regulatory}"
+    def rsid_arg  = rsid_bed.name.startsWith('NO_')   ? '' : "--rsid-bed ${rsid_bed}"
     """
     define_targets.py \\
         --targets ${targets_tsv} --gtf ${gtf} --fai ${fai} \\

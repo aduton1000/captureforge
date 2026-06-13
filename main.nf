@@ -1,56 +1,51 @@
 #!/usr/bin/env nextflow
 // ═══════════════════════════════════════════════════════════════════════════
 //  CaptureForge — hybridization-capture probe (bait) design pipeline
-//  main.nf  (entrypoint; full workflow wiring lands in task T10)
+//  main.nf  (entrypoint → subworkflows/captureforge.nf)
 // ═══════════════════════════════════════════════════════════════════════════
 nextflow.enable.dsl = 2
 
-// NOTE: This is the T1 skeleton entrypoint. Subworkflows/modules for Stages 1–10
-// are added in tasks T5–T10; this file currently validates inputs and prints the
-// resolved plan so the scaffold is runnable and `-resume`-able from day one.
+include { CAPTUREFORGE } from './subworkflows/captureforge.nf'
 
 def helpMessage() {
     log.info """
     ╔══════════════════════════════════════════════════════════════════════╗
     ║  CaptureForge ${workflow.manifest.version}  —  bait design pipeline   ║
     ╚══════════════════════════════════════════════════════════════════════╝
-
     Usage:
       nextflow run main.nf -profile <test|mac_local|hpc_slurm>,<conda|docker|apptainer> \\
-        --input <genes.txt|spec.csv|panel.xlsx> --genome_fasta <ref.fa> --gtf <ann.gtf>
+        --input <genes.txt|spec.csv|panel.xlsx> --genome_fasta <noalt.fa> --gtf <ann.gtf> \\
+        --specificity_db <noalt_index_prefix>
 
-    Key params (see params.example.yaml and nextflow.config for all):
-      --input            gene list: plain-text symbols, CSV/TSV spec, or Excel workbook
-      --genome_fasta     primary/no-alt reference FASTA   (required)
-      --gtf              Ensembl GTF gene models          (required)
-      --bait_len         bait length in nt                (default 120)
-      --bait_format      dna_pool | ivt_rna | ready_to_use
-      --outdir           results directory                (default results/)
+    Required: --input  --genome_fasta  --gtf  --specificity_db
+    See params.example.yaml / nextflow.config for all parameters.
     """.stripIndent()
 }
 
 workflow {
     if (params.help) { helpMessage(); return }
-
-    // Minimal input validation so the scaffold fails loudly & early.
-    if (!params.input)        { exit 1, "ERROR: --input gene list is required" }
-    if (!params.genome_fasta) { exit 1, "ERROR: --genome_fasta is required" }
+    if (!params.input)         { exit 1, "ERROR: --input gene list is required" }
+    if (!params.genome_fasta)  { exit 1, "ERROR: --genome_fasta is required" }
+    if (!params.gtf)           { exit 1, "ERROR: --gtf is required" }
+    if (!params.specificity_db) {
+        log.warn "No --specificity_db set: Stage 4/6 will fail. Build one from the NO-ALT genome:\n" +
+                 "  bin/build_specificity_index.sh --fasta ${params.genome_fasta} --aligner ${params.specificity_aligner} --out refs/idx"
+    }
 
     log.info """
     ─────────────────────────────────────────────────────────────────────────
-    CaptureForge ${workflow.manifest.version}   (scaffold entrypoint)
+    CaptureForge ${workflow.manifest.version}   profile=${workflow.profile}
+    panel=${params.panel_name}  build=${params.genome_build}  bait_len=${params.bait_len}  fmt=${params.bait_format}
+    input=${params.input}
+    genome=${params.genome_fasta}
+    gtf=${params.gtf}   specificity_db=${params.specificity_db}
+    outdir=${params.outdir}
     ─────────────────────────────────────────────────────────────────────────
-    panel        : ${params.panel_name}
-    input        : ${params.input}
-    genome_build : ${params.genome_build}
-    genome_fasta : ${params.genome_fasta}
-    gtf          : ${params.gtf}
-    bait_len     : ${params.bait_len} nt
-    bait_format  : ${params.bait_format}
-    outdir       : ${params.outdir}
-    profile      : ${workflow.profile}
-    ─────────────────────────────────────────────────────────────────────────
-    Stage modules (T5–T10) not yet wired. This entrypoint will invoke
-    subworkflows/captureforge.nf once implemented.
     """.stripIndent()
+
+    gene_list = file(params.input,        checkIfExists: true)
+    gtf       = file(params.gtf,          checkIfExists: true)
+    genome    = file(params.genome_fasta, checkIfExists: true)
+
+    CAPTUREFORGE(gene_list, gtf, genome)
 }

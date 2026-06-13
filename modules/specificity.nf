@@ -11,6 +11,7 @@ process SPECIFICITY_FILTER {
     input:
     path candidates_fasta
     path candidates_bed
+    path fai
 
     output:
     path "candidates.specpass.bed", emit: pass
@@ -24,6 +25,7 @@ process SPECIFICITY_FILTER {
     specificity_filter.py \\
         --candidates ${candidates_fasta} --candidates-bed ${candidates_bed} \\
         --aligner ${params.specificity_aligner} --db ${params.specificity_db} \\
+        --genome-fai ${fai} \\
         --min-identity ${params.offtarget_min_identity} \\
         --min-lenfrac ${params.offtarget_min_lenfrac} \\
         --max-offtarget ${params.offtarget_max_hits} \\
