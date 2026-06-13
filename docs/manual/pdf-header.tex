@@ -1,4 +1,14 @@
-% Map the one Unicode glyph the body font (Helvetica Neue) lacks to a LaTeX
-% equivalent, for the xelatex PDF build. (All other glyphs render natively.)
+% ── CaptureForge manual — xelatex preamble extras ─────────────────────────
+% Map the one Unicode glyph Helvetica Neue lacks to a LaTeX equivalent.
 \usepackage{newunicodechar}
 \newunicodechar{→}{\ensuremath{\rightarrow}}
+
+% Cover on its own page; Table of Contents on the next page.
+\usepackage{etoolbox}
+\apptocmd{\maketitle}{\thispagestyle{empty}\clearpage}{}{}
+\apptocmd{\tableofcontents}{\clearpage}{}{}
+
+% Code-wrapping backstop: wrap long lines inside code blocks so nothing runs
+% past the margin even if a command isn't manually split.
+\usepackage{fvextra}
+\fvset{breaklines=true,breakanywhere=true,fontsize=\small}

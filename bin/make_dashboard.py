@@ -6,9 +6,28 @@ Build a single self-contained HTML QC dashboard: embeds every figure (base64
 PNG) and the key metrics tables from metrics.json. No external assets.
 """
 from __future__ import annotations
-import argparse, base64, glob, json, os, sys
+import argparse, base64, glob, json, os, re, sys
 from pathlib import Path
 from jinja2 import Template
+
+# Plain-language one-liner per figure (kept in sync with bin/make_figures.py).
+CAPTIONS = {
+    "pipeline_dag": "The 10-stage CaptureForge flow, colored by phase: target definition → selection → assembly → QC & export.",
+    "coverage_by_class": "Mappable coverage ≥96% for coding/promoter/str; CNV lower (~78%) because repeat-rich loci are largely unmappable.",
+    "coverage_by_gene": "Per-gene raw coverage; GENE/GENE lowest (CNV segdup/LCR). Red <80%, orange <95%, green ≥95%.",
+    "baits_per_gene_by_class": "Per-gene bait composition by design class (multi-class baits attributed to their primary class).",
+    "gc_hist": "GC of spec-pass candidate baits — one row per tiled position, copies NOT multiplied in. Spikes are expected from dense tiling; what matters is the bulk inside the 25–70% window.",
+    "tm_hist": "Tm of passing candidate baits (per position, not copies); the population sits within the 60–90 °C capture window.",
+    "offtarget_hist": "Most baits are unique (0 off-targets); the long repeat tail (binned) is rejected.",
+    "copynumber_hist": "Most baits appear once; promoter/regulatory/anchor baits are boosted ×2–4 to even out capture.",
+    "per_class_summary": "Final unique baits per design class (coding dominates; cnv/str from whole-locus tiling).",
+    "convergence": "Re-tiling plateaus below the 95% target — correct, because residual gaps are non-specific/repeat.",
+    "cost_pool_tier": "Unique baits sit under the 12k oligo-pool tier (synthesis-pool cost only).",
+    "coverage_tracks": "Lanes: target (raw) / tileable (post-mask) / baits (final). A baits gap where tileable is also empty = masked/uncapturable (expected); a gap where tileable is present = a real gap.",
+}
+
+def caption_for(name):
+    return CAPTIONS.get(name) or CAPTIONS.get(re.sub(r"_page\d+$", "", name)) or ""
 
 TEMPLATE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>CaptureForge QC — {{ panel }}</title>
@@ -47,6 +66,10 @@ TEMPLATE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
  <div class="ok">Coverage is reported as <b>mappable</b> (over tileable sequence) and <b>raw</b> (over nominal target). The
   raw↔mappable gap is sequence intentionally removed by masking (repeats/segdups/STR cores/Alu) — uncapturable by design.</div>
 
+ {% if has_dag %}<section><h2>Pipeline</h2>
+  {{ figure('pipeline_dag') }}
+ </section>{% endif %}
+
  <section><h2>Coverage</h2>
   {% for f in ['coverage_by_class','coverage_by_gene'] %}{{ figure(f) }}{% endfor %}
   <table><tr><th>class</th><th>raw cov</th><th>mappable cov</th><th>covered bp</th><th>raw bp</th></tr>
@@ -63,6 +86,10 @@ TEMPLATE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 
  <section><h2>Bait composition & specificity</h2>
   {% for f in ['gc_hist','tm_hist','offtarget_hist','copynumber_hist'] %}{{ figure(f) }}{% endfor %}
+ </section>
+
+ <section><h2>Per-gene bait composition</h2>
+  {% for f in pergene_pages %}{{ figure(f) }}{% endfor %}
  </section>
 
  <section><h2>Tiling / convergence / pool</h2>
@@ -101,15 +128,25 @@ def main():
         b64 = embed(name)
         if not b64:
             return ""
-        return (f'<div class="fig"><img src="data:image/png;base64,{b64}">'
-                f'<div class="cap">{name}.png (SVG also in results/figures/)</div></div>')
+        cap = caption_for(name)
+        cap_html = f'<div class="cap"><b>{cap}</b></div>' if cap else ""
+        return (f'<div class="fig"><img src="data:image/png;base64,{b64}">{cap_html}'
+                f'<div class="cap" style="opacity:.6">{name}.png (SVG also in figures/)</div></div>')
 
-    track_pages = sorted(os.path.basename(p)[:-4] for p in glob.glob(os.path.join(args.figdir, "coverage_tracks_page*.png")))
+    def pages(prefix):
+        return sorted(os.path.basename(p)[:-4]
+                      for p in glob.glob(os.path.join(args.figdir, f"{prefix}*.png")))
+
+    track_pages = pages("coverage_tracks_page")
+    pergene_pages = (["baits_per_gene_by_class"]
+                     if os.path.exists(os.path.join(args.figdir, "baits_per_gene_by_class.png"))
+                     else pages("baits_per_gene_by_class_page"))
+    has_dag = os.path.exists(os.path.join(args.figdir, "pipeline_dag.png"))
 
     html = Template(TEMPLATE).render(
         m=m, panel=args.panel, bait_format=args.bait_format,
         generated=args.generated, metrics_json=json.dumps(m, indent=2),
-        figure=figure, track_pages=track_pages)
+        figure=figure, track_pages=track_pages, pergene_pages=pergene_pages, has_dag=has_dag)
     Path(args.output).write_text(html)
     sys.stderr.write(f"[make_dashboard] wrote self-contained dashboard → {args.output} "
                      f"({len(html)//1024} KB, {len(track_pages)} track pages)\n")

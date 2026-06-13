@@ -9,7 +9,7 @@ stage BEDs and JSON summaries from a working directory. Figures:
   coverage_tracks_page{N} (genome-browser-style per-gene panels, paginated).
 """
 from __future__ import annotations
-import argparse, csv, json, math, os
+import argparse, csv, json, math, os, re, subprocess, sys
 from collections import defaultdict, Counter
 from pathlib import Path
 
@@ -23,8 +23,32 @@ CLASS_COLORS = {"coding": "#1f77b4", "promoter": "#ff7f0e", "regulatory": "#2ca0
 plt.rcParams.update({"figure.dpi": 110, "font.size": 9, "axes.grid": True,
                      "grid.alpha": 0.3, "axes.axisbelow": True})
 
+# One-line, plain-language interpretation baked into every figure (and reused by
+# the dashboard/report/manual). Keyed by figure base name (page suffix stripped).
+CAPTIONS = {
+    "coverage_by_class": "Mappable coverage ≥96% for coding/promoter/str; CNV lower (~78%) because repeat-rich loci are largely unmappable.",
+    "coverage_by_gene": "Per-gene raw coverage; GENE/GENE lowest (CNV segdup/LCR). Red <80%, orange <95%, green ≥95%.",
+    "gc_hist": "GC of spec-pass candidate baits (one row per tiled position — copies are NOT multiplied in). Spikes are expected from dense tiling of homogeneous regions; what matters is the bulk sitting in the 25–70% window.",
+    "tm_hist": "Tm of passing candidate baits (per tiled position, not copies). The population sits within the 60–90 °C capture window.",
+    "offtarget_hist": "Most baits are unique (0 off-targets); the long repeat tail (binned) is rejected. Binned x-axis for readability.",
+    "copynumber_hist": "Most baits appear once; promoter/regulatory/anchor baits are boosted to ×2–4 to even out capture.",
+    "convergence": "Re-tiling plateaus below the 95% target — correct, because the residual gaps are non-specific/repeat sequence.",
+    "per_class_summary": "Final unique baits per design class (coding dominates; cnv/str come from whole-locus tiling).",
+    "cost_pool_tier": "Unique baits sit under the 12k oligo-pool tier (synthesis-pool cost only, not assay cost).",
+    "baits_per_gene_by_class": "Per-gene bait composition by design class (multi-class baits attributed to their primary class).",
+    "coverage_tracks": "Lanes: target (raw, class-colored) / tileable (post-mask) / baits (final). A baits gap where tileable is ALSO empty = masked/uncapturable (expected); a baits gap where tileable is present = a real gap to investigate.",
+}
+
+
+def _caption_for(name):
+    return CAPTIONS.get(name) or CAPTIONS.get(re.sub(r"_page\d+$", "", name))
+
 
 def save(fig, figdir, name):
+    cap = _caption_for(name)
+    if cap:
+        fig.text(0.5, -0.015, cap, ha="center", va="top", fontsize=7, style="italic",
+                 color="#444", wrap=True)
     for ext in ("png", "svg"):
         fig.savefig(os.path.join(figdir, f"{name}.{ext}"), bbox_inches="tight")
     plt.close(fig)
@@ -112,10 +136,24 @@ def fig_offtarget(W, figdir):
     dist = s4.get("offtarget_count_distribution", {})
     if not dist:
         return
-    k = [int(x) for x in dist]; v = [dist[str(x)] for x in k]
+    # categorical bins so the 0..thousands range is readable
+    bins = [("0", lambda k: k == 0), ("1", lambda k: k == 1),
+            ("2–5", lambda k: 2 <= k <= 5), ("6–20", lambda k: 6 <= k <= 20),
+            ("21–100", lambda k: 21 <= k <= 100), (">100", lambda k: k > 100)]
+    labels = [b[0] for b in bins]
+    vals = [0] * len(bins)
+    for ks, n in dist.items():
+        k = int(ks)
+        for i, (_, pred) in enumerate(bins):
+            if pred(k):
+                vals[i] += n
+                break
     fig, ax = plt.subplots(figsize=(7, 4))
-    ax.bar([str(x) for x in k], v, color="#d62728")
-    ax.set_xlabel("off-target hit count"); ax.set_ylabel("baits (log)"); ax.set_yscale("log")
+    bars = ax.bar(labels, vals, color="#d62728")
+    ax.set_yscale("log")
+    ax.set_xlabel("off-target hit count (binned)"); ax.set_ylabel("baits (log scale)")
+    ax.bar_label(bars, fmt="%d", fontsize=8, padding=2)
+    ax.margins(y=0.18)
     ax.set_title("Off-target hit-count distribution (specificity)")
     save(fig, figdir, "offtarget_hist")
 
@@ -185,7 +223,7 @@ def fig_cost_tier(W, figdir):
     save(fig, figdir, "cost_pool_tier")
 
 
-def fig_coverage_tracks(W, figdir, per_page=6):
+def fig_coverage_tracks(W, figdir, per_page=4):
     raw = load_bed_by_gene(os.path.join(W, "targets.raw.bed"), 0)
     masked = load_bed_by_gene(os.path.join(W, "targets.masked.bed"), 0)
     baits = load_bed_by_gene(os.path.join(W, "baits.dedup.bed"), 1)   # CF_x|gene|class
@@ -193,29 +231,76 @@ def fig_coverage_tracks(W, figdir, per_page=6):
     pages = math.ceil(len(genes) / per_page)
     for pg in range(pages):
         sub = genes[pg * per_page:(pg + 1) * per_page]
-        fig, axes = plt.subplots(len(sub), 1, figsize=(10, 1.7 * len(sub)), squeeze=False)
+        # taller panels + generous vertical gap so coordinate ticks never collide
+        # with the next gene's title.
+        fig, axes = plt.subplots(len(sub), 1, figsize=(10, 2.3 * len(sub)), squeeze=False,
+                                 gridspec_kw={"hspace": 1.15})
         for ax, gene in zip(axes[:, 0], sub):
             ivs = raw.get(gene, [])
             lo = min(s for _, s, e, _ in ivs); hi = max(e for _, s, e, _ in ivs)
             span = hi - lo or 1; pad = span * 0.02
-            # raw targets by class (lane y=2)
-            for ch, s, e, cls in ivs:
+            for ch, s, e, cls in ivs:                                        # target lane
                 ax.broken_barh([(s, e - s)], (1.6, 0.8), color=CLASS_COLORS.get(cls, "#333"), alpha=0.85)
-            # masked-tileable (lane y=1) light
-            for ch, s, e, cls in masked.get(gene, []):
+            for ch, s, e, cls in masked.get(gene, []):                       # tileable lane
                 ax.broken_barh([(s, e - s)], (0.9, 0.5), color="#bbbbbb")
-            # final baits (lane y=0)
-            for ch, s, e, cls in baits.get(gene, []):
+            for ch, s, e, cls in baits.get(gene, []):                        # baits lane
                 ax.broken_barh([(s, e - s)], (0.2, 0.5), color="black")
             ax.set_xlim(lo - pad, hi + pad); ax.set_ylim(0, 2.6)
             ax.set_yticks([0.45, 1.15, 2.0]); ax.set_yticklabels(["baits", "tileable", "target"], fontsize=7)
-            ax.set_title(f"{gene}  ({ivs[0][0]}:{lo:,}-{hi:,})", fontsize=8, loc="left")
+            ax.set_title(f"{gene}  ({ivs[0][0]}:{lo:,}-{hi:,})", fontsize=8.5, loc="left", pad=4)
+            ax.tick_params(axis="x", labelsize=6.5)
             ax.grid(False)
         present = sorted({c for g in sub for *_, c in raw.get(g, [])})
         fig.legend(handles=[Patch(color=CLASS_COLORS.get(c, "#333"), label=c) for c in present],
-                   loc="lower center", ncol=len(present), fontsize=7, bbox_to_anchor=(0.5, -0.02))
-        fig.suptitle(f"Per-gene coverage tracks (page {pg+1}/{pages})", y=1.0)
+                   loc="lower center", ncol=len(present), fontsize=7, bbox_to_anchor=(0.5, -0.01))
+        fig.suptitle(f"Per-gene coverage tracks (page {pg+1}/{pages})", y=0.995, fontsize=11)
         save(fig, figdir, f"coverage_tracks_page{pg+1}")
+    return pages
+
+
+def fig_baits_per_gene_by_class(W, figdir, per_page=30):
+    """Horizontal stacked bar of bait counts per gene, broken down by class.
+    Counts derive from baits.csv (gene + class); multi-class baits are attributed
+    to their primary (first-listed) class so the bars sum to the unique bait count.
+    Also writes the gene × class count matrix as a TSV."""
+    path = os.path.join(W, "baits.csv")
+    if not os.path.exists(path):
+        return 0
+    counts = defaultdict(lambda: defaultdict(int))            # gene -> class -> n
+    with open(path, newline="") as fh:
+        for r in csv.DictReader(fh):
+            gene = (r.get("gene", "") or "").split(",")[0].strip()
+            cls = (r.get("class", "") or "").split(",")[0].strip()
+            if gene and cls:
+                counts[gene][cls] += 1
+    if not counts:
+        return 0
+    order = ["coding", "promoter", "regulatory", "cnv", "str", "anchor"]
+    classes = [c for c in order if any(c in counts[g] for g in counts)]
+    # matrix TSV (all genes, alphabetical)
+    with open(os.path.join(figdir, "baits_per_gene_by_class.tsv"), "w") as o:
+        o.write("gene\t" + "\t".join(classes) + "\ttotal\n")
+        for g in sorted(counts):
+            row = [counts[g].get(c, 0) for c in classes]
+            o.write(g + "\t" + "\t".join(map(str, row)) + f"\t{sum(row)}\n")
+    # paginate, sorted by total desc so big genes lead
+    genes = sorted(counts, key=lambda g: sum(counts[g].values()))   # asc → largest at top after barh
+    pages = math.ceil(len(genes) / per_page)
+    for pg in range(pages):
+        sub = genes[max(0, len(genes) - (pg + 1) * per_page): len(genes) - pg * per_page]
+        y = list(range(len(sub)))
+        fig, ax = plt.subplots(figsize=(9, max(4, 0.34 * len(sub) + 1.3)))
+        left = [0] * len(sub)
+        for c in classes:
+            vals = [counts[g].get(c, 0) for g in sub]
+            ax.barh(y, vals, left=left, color=CLASS_COLORS.get(c, "#333"), label=c, height=0.78)
+            left = [a + b for a, b in zip(left, vals)]
+        ax.set_yticks(y); ax.set_yticklabels(sub, fontsize=7)
+        ax.set_ylim(-0.6, len(sub) - 0.4)
+        ax.set_xlabel("baits"); ax.margins(x=0.02)
+        ax.set_title(f"Baits per gene by design class" + (f" (page {pg+1}/{pages})" if pages > 1 else ""))
+        ax.legend(ncol=len(classes), fontsize=7, loc="upper right")
+        save(fig, figdir, f"baits_per_gene_by_class_page{pg+1}" if pages > 1 else "baits_per_gene_by_class")
     return pages
 
 
@@ -223,7 +308,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workdir", required=True)
     ap.add_argument("--figdir", required=True)
-    ap.add_argument("--tracks-per-page", type=int, default=6)
+    ap.add_argument("--tracks-per-page", type=int, default=4)
+    ap.add_argument("--genes-per-page", type=int, default=30, help="baits_per_gene_by_class pagination")
     args = ap.parse_args()
     os.makedirs(args.figdir, exist_ok=True)
     W = args.workdir
@@ -234,9 +320,16 @@ def main():
     fig_copynumber(W, args.figdir)
     fig_convergence(W, args.figdir)
     fig_per_class_summary(W, args.figdir)
+    fig_baits_per_gene_by_class(W, args.figdir, args.genes_per_page)
     fig_cost_tier(W, args.figdir)
     pages = fig_coverage_tracks(W, args.figdir, args.tracks_per_page)
-    import sys
+    # polished pipeline DAG (graphviz). Best-effort: skip cleanly if unavailable.
+    dag = os.path.join(os.path.dirname(os.path.abspath(__file__)), "make_dag.py")
+    try:
+        subprocess.run([sys.executable, dag, "--figdir", args.figdir], check=True,
+                       capture_output=True, text=True)
+    except Exception as e:
+        sys.stderr.write(f"[make_figures] DAG skipped ({e})\n")
     sys.stderr.write(f"[make_figures] wrote figures (PNG+SVG) to {args.figdir} "
                      f"(incl. {pages} coverage-track pages)\n")
 

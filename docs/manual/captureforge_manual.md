@@ -1,7 +1,10 @@
 ---
 title: "CaptureForge User Manual"
 subtitle: "A general-purpose hybridization-capture bait (probe) design pipeline — v0.1.0"
-author: "Genomics & Bioinformatics Core"
+author: |
+  Bright Adu\
+  Genomics & Bioinformatics Core, Noguchi Memorial Institute for Medical Research,\
+  University of Ghana, Legon, Ghana
 date: "13 June 2026"
 ---
 
@@ -103,8 +106,10 @@ under `results/<outdir>/stageN_*/`, and emits a `stageN_summary.json` of metrics
 
 The pipeline is driven by **profiles** (`-profile test|mac_local|hpc_slurm`) that select the executor and
 resources, composed with a **container engine** profile (`conda|docker|apptainer`). An interactive DAG of the
-run is written to `results/<outdir>/pipeline_info/dag.html`, alongside `report.html`, `timeline.html`, and
-`trace.txt`.
+run is also written to `results/<outdir>/pipeline_info/dag.html`, alongside `report.html`, `timeline.html`,
+and `trace.txt`.
+
+![The 10-stage CaptureForge flow, color-coded by phase: target definition (blue) → selection (orange) → assembly (green) → QC & export (purple); grey nodes are inputs/outputs. Each node names the stage and its primary tool. Follow the arrows top-to-bottom; the same flow is what `main.nf` wires.](figures/pipeline_dag.png){width=58%}
 
 ---
 
@@ -276,9 +281,15 @@ Build the index **from the no-alt design genome**:
 
 ```bash
 # BLAST (no index-build wait; used in the local human run)
-bin/build_specificity_index.sh --fasta GRCh38.primary_assembly.fa --aligner blast   --out $PWD/refs/grch38_noalt
+bin/build_specificity_index.sh \
+    --fasta GRCh38.primary_assembly.fa \
+    --aligner blast \
+    --out $PWD/refs/grch38_noalt
 # bowtie2 (native, recommended on the HPC)
-bin/build_specificity_index.sh --fasta GRCh38.primary_assembly.fa --aligner bowtie2 --out $PWD/refs/grch38_noalt_bt2
+bin/build_specificity_index.sh \
+    --fasta GRCh38.primary_assembly.fa \
+    --aligner bowtie2 \
+    --out $PWD/refs/grch38_noalt_bt2
 ```
 
 `--specificity_db` is referenced **in place** (not staged into work dirs), so it **must be an absolute path**
@@ -347,7 +358,10 @@ bash test/check_outputs.sh                    # sanity-check; expects all 6 desi
 ## Full run — `mac_local`
 
 ```bash
-bin/build_specificity_index.sh --fasta GRCh38.primary_assembly.fa --aligner blast --out $PWD/refs/grch38_noalt
+bin/build_specificity_index.sh \
+    --fasta GRCh38.primary_assembly.fa \
+    --aligner blast \
+    --out $PWD/refs/grch38_noalt
 conda activate captureforge && export PATH="$CONDA_PREFIX/bin:$PATH"
 ./.tools/nextflow run main.nf -profile mac_local -params-file params.full.yaml
 ```
@@ -358,13 +372,16 @@ conda activate captureforge && export PATH="$CONDA_PREFIX/bin:$PATH"
 apptainer build captureforge.sif env/captureforge.def
 nextflow run /shared/apps/captureforge/main.nf -profile hpc_slurm,apptainer \
     -params-file my_panel.params.yaml \
-    --genome_fasta   $CF_REFS/GRCh38.primary_assembly.fa \
-    --gtf            $CF_REFS/GRCh38.112.gtf.gz \
-    --specificity_db $CF_REFS/grch38_noalt_bt2 --specificity_aligner bowtie2 \
-    --rmsk_bed       $CF_REFS/rmsk.GRCh38.txt.gz \
+    --genome_fasta $CF_REFS/GRCh38.primary_assembly.fa \
+    --gtf $CF_REFS/GRCh38.112.gtf.gz \
+    --specificity_db $CF_REFS/grch38_noalt_bt2 \
+    --specificity_aligner bowtie2 \
+    --rmsk_bed $CF_REFS/rmsk.GRCh38.txt.gz \
     --simplerepeat_bed $CF_REFS/simpleRepeat.GRCh38.txt.gz \
-    --rsid_bed       $CF_REFS/anchors.rsid.bed \
-    --slurm_partition <queue> --scratch_dir $TMPDIR --outdir results
+    --rsid_bed $CF_REFS/anchors.rsid.bed \
+    --slurm_partition <queue> \
+    --scratch_dir $TMPDIR \
+    --outdir results
 ```
 
 ---
@@ -386,10 +403,12 @@ This is the panel already run; it uses MANE Select canonical transcripts and the
 ```bash
 ./.tools/nextflow run main.nf -profile mac_local \
     --input my_panel.spec.csv \
-    --genome_fasta   refs/GRCh38.primary_assembly.fa \
-    --gtf            refs/Homo_sapiens.GRCh38.112.gtf.gz \
-    --specificity_db $PWD/refs/grch38_noalt --specificity_aligner blast \
-    --rmsk_bed refs/rmsk.GRCh38.txt.gz --simplerepeat_bed refs/simpleRepeat.GRCh38.txt.gz \
+    --genome_fasta refs/GRCh38.primary_assembly.fa \
+    --gtf refs/Homo_sapiens.GRCh38.112.gtf.gz \
+    --specificity_db $PWD/refs/grch38_noalt \
+    --specificity_aligner blast \
+    --rmsk_bed refs/rmsk.GRCh38.txt.gz \
+    --simplerepeat_bed refs/simpleRepeat.GRCh38.txt.gz \
     --rsid_bed refs/anchors.rsid.bed \
     --canonical_source mane
 ```
@@ -403,16 +422,20 @@ your own variant BED for anchors.
 
 ```bash
 # fetch GRCm39 primary assembly + GTF from Ensembl yourself, then:
-bin/build_specificity_index.sh --fasta GRCm39.primary_assembly.fa --aligner bowtie2 --out $PWD/refs/grcm39_bt2
+bin/build_specificity_index.sh \
+    --fasta GRCm39.primary_assembly.fa \
+    --aligner bowtie2 \
+    --out $PWD/refs/grcm39_bt2
 
 ./.tools/nextflow run main.nf -profile mac_local \
     --input mouse_panel.spec.csv \
-    --genome_fasta   refs/GRCm39.primary_assembly.fa \
-    --gtf            refs/Mus_musculus.GRCm39.112.gtf.gz \
-    --specificity_db $PWD/refs/grcm39_bt2 --specificity_aligner bowtie2 \
+    --genome_fasta refs/GRCm39.primary_assembly.fa \
+    --gtf refs/Mus_musculus.GRCm39.112.gtf.gz \
+    --specificity_db $PWD/refs/grcm39_bt2 \
+    --specificity_aligner bowtie2 \
     --canonical_source ensembl_canonical \
     --regulatory_gff refs/Mus_musculus.GRCm39.regulatory_features.gff.gz \
-    --rsid_bed refs/mouse_anchors.bed          # user-supplied (chrom start end id), optional
+    --rsid_bed refs/mouse_anchors.bed   # user-supplied (chrom start end id), optional
 ```
 
 **Caveats:** `fetch_references.sh` is human-only — fetch mouse refs manually. UCSC `rmsk`/`simpleRepeat` use
@@ -431,13 +454,17 @@ bin/build_specificity_index.sh --fasta GRCm39.primary_assembly.fa --aligner bowt
 
 ```bash
 # Gene models from PlasmoDB / Ensembl Protists; primary assembly (no alts):
-bin/build_specificity_index.sh --fasta PlasmoDB-Pf3D7_Genome.fasta --aligner bowtie2 --out $PWD/refs/pf3d7_bt2
+bin/build_specificity_index.sh \
+    --fasta PlasmoDB-Pf3D7_Genome.fasta \
+    --aligner bowtie2 \
+    --out $PWD/refs/pf3d7_bt2
 
 ./.tools/nextflow run main.nf -profile mac_local \
     --input pf_drug_resistance.spec.csv \
-    --genome_fasta   refs/PlasmoDB-Pf3D7_Genome.fasta \
-    --gtf            refs/PlasmoDB-Pf3D7.gtf \
-    --specificity_db $PWD/refs/pf3d7_bt2 --specificity_aligner bowtie2 \
+    --genome_fasta refs/PlasmoDB-Pf3D7_Genome.fasta \
+    --gtf refs/PlasmoDB-Pf3D7.gtf \
+    --specificity_db $PWD/refs/pf3d7_bt2 \
+    --specificity_aligner bowtie2 \
     --canonical_source longest \
     --gc_min 0.15 --gc_max 0.55 \
     --gc_max_promoter 0.60 \
@@ -536,6 +563,16 @@ raw number is the *expected, honest* result, not a failure.
 
 ![Per-gene raw coverage, sorted. Green ≥95%, orange <95%, red <80%. The red/orange genes are not "broken" — they are the paralog-limited and CNV/segdup loci discussed below (GENE, GENE lowest). Use this to spot which genes need a second look, then confirm the reason on the track plots.](figures/coverage_by_gene.png){width=70%}
 
+To see *how* each gene's baits are composed by design class, the per-gene-by-class view stacks bait counts
+per gene (counts from `baits.csv`, multi-class baits attributed to their primary class so the bars sum to
+the unique-bait count). It makes the design intent obvious at a glance — GENE is dominated by `str`
+(its unique flanks), GENE/GENE/GENE by `cnv` (whole-locus tiling), and most other genes are `coding`+`promoter`.
+The full gene × class matrix is in *Appendix A* (and `figures/baits_per_gene_by_class.tsv`).
+
+![Baits per gene by design class (page 1 of 2; genes sorted by total bait count). Stacked segments are the design classes; the bar length is that gene's bait count. GENE (str), GENE/GENE/GENE (cnv) lead.](figures/baits_per_gene_by_class_page1.png){width=72%}
+
+![Baits per gene by design class (page 2 of 2): the smaller-count genes, mostly coding ± promoter.](figures/baits_per_gene_by_class_page2.png){width=72%}
+
 ## The three-tier per-gene honesty
 
 Not all "incomplete" coverage means the same thing. Genes fall into three tiers:
@@ -570,9 +607,9 @@ Each per-gene panel has three lanes: **target** (raw, colored by class), **tilea
 - A gap in **baits** where **tileable** is present → a **real** gap (a bait was rejected for specificity or
   composition) → worth investigating.
 
-![A clean page (genes GENE, GENE, GENE, GENE, GENE, GENE): the `baits` lane closely tracks the `target` and `tileable` lanes — exons are well covered with only small, expected gaps.](figures/coverage_tracks_page1.png){width=90%}
+![A clean page (genes GENE, GENE, GENE, GENE): the `baits` lane closely tracks the `target` and `tileable` lanes — exons are well covered with only small, expected gaps. (4 genes/page, spaced so coordinate ticks never collide with the next gene's title.)](figures/coverage_tracks_page1.png){width=92%}
 
-![A hard page including GENE (red `cnv` lane): note the large stretches where the `baits` lane is sparse even though `target` is present — these align with GENE's internal repeats and segmental-dup blocks. This visual is why GENE is flagged breakpoint-blind despite having many bins.](figures/coverage_tracks_page4.png){width=90%}
+![A hard page including GENE (red `cnv` lane): note the large stretch in the middle where the `baits` lane is sparse even though `target` is present — these align with GENE's segmental-dup / LCR blocks. This visual is why GENE is flagged breakpoint-blind despite having many bins. GENE looks the same on its own page.](figures/coverage_tracks_page4.png){width=92%}
 
 ## Composition QC — GC and Tm
 
@@ -581,9 +618,15 @@ homopolymer (>10), or low entropy. The histograms show the passing population si
 the dashed lines are the thresholds. **For an AT-rich organism these distributions shift left** and you must
 move the windows (see *Running on different organisms*), or almost everything is rejected.
 
-![GC distribution. Grey = all specificity-passing candidates; blue = those that also pass composition. Dashed lines mark the 25–70% window. If you see most of the population *outside* the window (as you would for an AT-rich genome), widen/shift `gc_min`/`gc_max`.](figures/gc_hist.png){width=80%}
+> **What these histograms count.** They count **spec-pass candidate baits — one row per tiled position**
+> (from `composition.tsv`); boosted **copies are NOT multiplied in**, so a boosted bait is counted once, not
+> 2–4×. The tall spikes are therefore *expected*: dense tiling of a compositionally homogeneous region
+> produces many near-identical baits at the same GC/Tm. What matters is that the **bulk of the distribution
+> sits inside the GC 25–70% / Tm 60–90 °C windows**, not the spike heights.
 
-![Tm distribution of passing baits, with the 60–90 °C window marked. AT-rich baits melt lower; if the population piles up below `tm_min`, lower it.](figures/tm_hist.png){width=80%}
+![GC distribution (spec-pass candidate baits — positions, not copies). Grey = all specificity-passing candidates; blue = those that also pass composition. Dashed lines mark the 25–70% window. Spikes are expected; if the population sits *outside* the window (as for an AT-rich genome), widen/shift `gc_min`/`gc_max`.](figures/gc_hist.png){width=80%}
+
+![Tm distribution of passing candidate baits (positions, not copies), 60–90 °C window marked. AT-rich baits melt lower; if the population piles up below `tm_min`, lower it.](figures/tm_hist.png){width=80%}
 
 ## Specificity QC — the off-target distribution
 
@@ -591,7 +634,7 @@ Stage 4 counts, per bait, how many off-target loci it hits above the identity/le
 bait has 0; one tolerated hit (≤ `offtarget_max_hits`) still passes; more are rejected. The long tail (baits
 hitting hundreds or thousands of loci) are repeat-derived candidates, correctly discarded.
 
-![Off-target hit-count distribution (log y-axis). The bulk at 0 are unique baits; the small bars at 1 are tolerated paralog hits (tagged `off_target_flag=1`); the long tail to the right are repeat baits that are rejected.](figures/offtarget_hist.png){width=80%}
+![Off-target hit-count distribution, **binned x-axis** (0 / 1 / 2–5 / 6–20 / 21–100 / >100) with a log y-axis and counts above each bar. The bin at 0 (N baits) are unique; the bin at 1 (tolerated, tagged `off_target_flag=1`) and 2–5 are paralog hits; the right-hand bins are repeat baits that are rejected. Binning keeps the 0-to-thousands range readable.](figures/offtarget_hist.png){width=80%}
 
 ## Boosting / dedup — copy number
 
@@ -761,3 +804,75 @@ releases from `refs.provenance.json`.
 - **0.1.0** — initial release: 10-stage Nextflow pipeline, three profiles, three input on-ramps, no-alt
   reference invariant enforced, QC dashboard + figures, generic order package. First production use: multi-gene
   human study-susceptibility panel (N unique baits, ~NN.N% mappable coverage, pool tier).
+
+# Appendix A — Per-gene bait composition (gene × class)
+
+Bait counts per gene broken down by design class (from `baits.csv`; multi-class baits attributed to
+their primary class, so the table sums to the N unique baits). Source: 
+`results/full_run/figures/baits_per_gene_by_class.tsv`; figures: `baits_per_gene_by_class_page{1,2}.png`.
+
+| gene | coding | promoter | cnv | str | anchor | total |
+|---|---|---|---|---|---|---|
+| GENE | 116 | 0 | 0 | 1029 | 4 | 1149 |
+| GENE | 53 | 0 | 721 | 0 | 0 | 774 |
+| GENE | 43 | 0 | 705 | 0 | 0 | 748 |
+| GENE | 11 | 0 | 509 | 0 | 0 | 520 |
+| GENE | 222 | 49 | 0 | 0 | 0 | 271 |
+| GENE | 45 | 0 | 0 | 154 | 0 | 199 |
+| GENE | 140 | 29 | 0 | 0 | 6 | 175 |
+| GENE | 145 | 25 | 0 | 0 | 0 | 170 |
+| GENE | 160 | 0 | 0 | 0 | 0 | 160 |
+| GENE | 24 | 17 | 0 | 117 | 0 | 158 |
+| GENE | 110 | 43 | 0 | 0 | 0 | 153 |
+| GENE | 130 | 0 | 0 | 0 | 0 | 130 |
+| GENE | 126 | 0 | 0 | 0 | 0 | 126 |
+| GENE | 33 | 18 | 0 | 64 | 5 | 120 |
+| GENE | 78 | 30 | 0 | 0 | 0 | 108 |
+| GENE | 79 | 26 | 0 | 0 | 0 | 105 |
+| GENE | 103 | 0 | 0 | 0 | 0 | 103 |
+| GENE | 57 | 46 | 0 | 0 | 0 | 103 |
+| GENE | 77 | 20 | 0 | 0 | 0 | 97 |
+| GENE | 43 | 47 | 0 | 0 | 0 | 90 |
+| GENE | 68 | 17 | 0 | 0 | 3 | 88 |
+| GENE | 86 | 0 | 0 | 0 | 0 | 86 |
+| GENE | 46 | 37 | 0 | 0 | 3 | 86 |
+| GENE | 64 | 21 | 0 | 0 | 0 | 85 |
+| GENE | 83 | 0 | 0 | 0 | 0 | 83 |
+| GENE | 36 | 43 | 0 | 0 | 0 | 79 |
+| GENE | 33 | 44 | 0 | 0 | 0 | 77 |
+| GENE | 22 | 0 | 55 | 0 | 0 | 77 |
+| GENE | 71 | 0 | 0 | 0 | 0 | 71 |
+| GENE | 70 | 0 | 0 | 0 | 0 | 70 |
+| GENE | 55 | 0 | 0 | 0 | 10 | 65 |
+| GENE | 64 | 0 | 0 | 0 | 0 | 64 |
+| GENE | 64 | 0 | 0 | 0 | 0 | 64 |
+| GENE | 58 | 0 | 0 | 0 | 5 | 63 |
+| GENE | 15 | 44 | 0 | 0 | 0 | 59 |
+| GENE | 52 | 0 | 0 | 0 | 5 | 57 |
+| GENE | 53 | 0 | 0 | 0 | 0 | 53 |
+| GENE | 30 | 21 | 0 | 0 | 0 | 51 |
+| GENE | 50 | 0 | 0 | 0 | 0 | 50 |
+| GENE | 45 | 0 | 0 | 0 | 0 | 45 |
+| GENE | 41 | 0 | 0 | 0 | 4 | 45 |
+| GENE | 45 | 0 | 0 | 0 | 0 | 45 |
+| GENE | 21 | 19 | 0 | 0 | 5 | 45 |
+| GENE | 44 | 0 | 0 | 0 | 0 | 44 |
+| GENE | 41 | 0 | 0 | 0 | 0 | 41 |
+| GENE | 40 | 0 | 0 | 0 | 0 | 40 |
+| GENE | 40 | 0 | 0 | 0 | 0 | 40 |
+| GENE | 39 | 0 | 0 | 0 | 0 | 39 |
+| GENE | 38 | 0 | 0 | 0 | 0 | 38 |
+| GENE | 35 | 0 | 0 | 0 | 0 | 35 |
+| GENE | 6 | 29 | 0 | 0 | 0 | 35 |
+| GENE | 32 | 0 | 0 | 0 | 0 | 32 |
+| GENE | 31 | 0 | 0 | 0 | 0 | 31 |
+| GENE | 30 | 0 | 0 | 0 | 0 | 30 |
+| GENE | 29 | 0 | 0 | 0 | 0 | 29 |
+| GENE | 26 | 0 | 0 | 0 | 0 | 26 |
+| GENE | 26 | 0 | 0 | 0 | 0 | 26 |
+| GENE | 22 | 0 | 0 | 0 | 0 | 22 |
+| GENE | 17 | 0 | 0 | 0 | 0 | 17 |
+| **total** | **3463** | **625** | **1990** | **1364** | **50** | **N** |
+
+(No `regulatory` column: the production run had no regulatory-build GFF, so promoter windows came
+from the GTF TSS and the regulatory class produced no intervals.)
