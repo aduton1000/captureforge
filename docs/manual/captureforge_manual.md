@@ -120,7 +120,17 @@ and `trace.txt`.
 - **Nextflow** ≥ 23.10 (needs **Java 17+**). The repo also bundles a launcher at `./.tools/nextflow`.
 - **conda / mamba** (for the pinned environment) **or** Docker / Apptainer (for the container).
 
-## conda environment
+CaptureForge supports two audiences: **(1) local users** on a personal laptop or workstation with no
+cluster, and **(2) a shared HPC** install used by many people. Both are covered below.
+
+## Local install (laptop or workstation — no HPC required)
+
+You can install and run CaptureForge **entirely on a personal computer**. The `test` profile and small
+panels run comfortably on a laptop; a full whole-genome–specificity run is heavier but still completes on a
+workstation (it just takes longer — see *Running the pipeline*). No cluster, scheduler, or admin rights are
+needed.
+
+### Option A — conda / mamba environment
 
 The pinned environment in `env/captureforge.yml` provides the whole toolchain (bedtools, samtools, seqkit,
 bowtie2, bwa-mem2, genmap, BLAST/dustmasker, primer3, pysam, Biopython, pyfaidx, pandas, openpyxl, jinja2,
@@ -142,26 +152,58 @@ CONDA_SUBDIR=osx-64 mamba env create -f env/captureforge.yml
 > conda activate captureforge && export PATH="$CONDA_PREFIX/bin:$PATH"
 > ```
 
-## Containers
+### Option B — Docker (avoids the Apple-Silicon PATH issue entirely)
 
 ```bash
-docker build -t captureforge:0.1.0 -f env/Dockerfile .       # Mac/CI development
-apptainer build captureforge.sif env/captureforge.def        # HPC (Docker usually banned)
+docker build -t captureforge:0.1.0 -f env/Dockerfile .
+# then run with the docker engine profile, e.g.:  ./.tools/nextflow run main.nf -profile test,docker
 ```
 
-## HPC / Lmod (central install)
+A laptop install is complete at this point: clone the repo, build the env (or image), and you can run the
+`test` profile and design real panels locally.
 
-A shared install lets others `module load captureforge` and run a wrapper. See `docs/hpc_deployment.md` for
-the full recipe; the pieces are:
+## Shared HPC install (this cluster as the worked example)
 
-- `share/modulefiles/captureforge/0.1.0.lua` — Lmod modulefile stub (edit `install_root` / `refs_root`).
-- `share/bin/captureforge-run` — wrapper that forwards to `nextflow run … -profile hpc_slurm,apptainer`.
+For a multi-user cluster you install **once, centrally**, so anyone can `module load captureforge` and run
+from any node. The commands below use **this facility's cluster** as the concrete example; paths marked
+**[cluster-specific]** are what other sites change.
 
-```bash
-module use /shared/apps/captureforge/share/modulefiles
-module load captureforge/0.1.0
-captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue>
-```
+- **Cluster:** Ubuntu 24.04, 4 compute nodes. The install must be reachable **cluster-wide regardless of
+  which node** a job lands on — so the environment, container, and references all live on shared storage.
+- **Shared conda environment** — source the cluster conda, then create the env under the shared envs
+  directory so all four nodes see it:
+
+  ```bash
+  source /hpc/opt/conda/etc/profile.d/conda.sh          # [cluster-specific] shared conda
+  mamba env create -f env/captureforge.yml              # lands in /hpc/opt/conda/envs/captureforge
+  conda activate captureforge                            # works from any node
+  ```
+
+  (Linux is native here — **no `CONDA_SUBDIR`/Rosetta**; that is a macOS-only step.)
+
+- **Apptainer image** (native linux; Docker is usually disallowed on shared clusters):
+
+  ```bash
+  apptainer build /hpc/opt/conda/envs/captureforge.sif env/captureforge.def   # [cluster-specific] path
+  ```
+
+- **SLURM is global** here — **no special partition is required by default**. Keep the partition and
+  account as **overridable parameters** (`--slurm_partition`, and an account via `--slurm_queue_opts`/
+  `clusterOptions` in `conf/hpc_slurm.config`) so users on partitioned sites can set them.
+
+- **Access mechanism:** an **Apptainer image + Lmod modulefile + the `captureforge-run` wrapper**:
+
+  ```bash
+  module use /hpc/opt/captureforge/share/modulefiles   # [cluster-specific] install root
+  module load captureforge/0.1.0
+  captureforge-run -params-file my_panel.params.yaml   # add --slurm_partition/account only if needed
+  ```
+
+  - `share/modulefiles/captureforge/0.1.0.lua` — Lmod modulefile stub (edit `install_root` / `refs_root`).
+  - `share/bin/captureforge-run` — wrapper that forwards to `nextflow run … -profile hpc_slurm,apptainer`.
+
+The **full cluster install/deploy** — Apptainer build, centralized reference data + index, the modulefile,
+and the wrapper — is documented step-by-step in **`docs/hpc_deployment.md`**.
 
 ---
 
@@ -239,6 +281,126 @@ Symbols written `A (B)` are resolved to whichever of `A`/`B` is a valid current 
 (`GENE (GENE)`→`GENE`, `GENE (GENE)`→`GENE`). Unresolvable symbols cause a **loud failure** with the
 offending list. `rs\d+` tokens in `Key variants to capture` / `anchors` are extracted as anchor targets
 (resolved to coordinates via a dbSNP VCF or a `--rsid_bed`; see *Reference data*).
+
+## Worked tutorial — starting from just a gene name (p53 → TP53)
+
+Suppose all you have is a gene you care about: **p53**. This walkthrough takes you from that name to an
+order package, and shows where each on-ramp fits.
+
+### Step 1 — get the symbol right (the most common trap)
+
+`p53` is a **protein nickname**, not a gene symbol. CaptureForge resolves **HGNC/Ensembl gene symbols**
+against the GTF, so the symbol you feed it is **`TP53`**. If you pass `p53`, Stage 1 will not silently
+guess — it **fails loudly** and lists the unresolvable symbol. That loud failure is a *feature*: it stops
+you designing baits for the wrong (or no) locus.
+
+Other nickname/alias traps that bite people:
+
+| You might type | Real symbol | Note |
+|---|---|---|
+| `p53` | `TP53` | protein name ≠ gene symbol |
+| `HER2` / `Neu` | `ERBB2` | receptor nickname |
+| `DC-SIGN` | `GENE` | protein nickname |
+| `PD-1` | `PDCD1` | protein nickname |
+
+If you are unsure, look the gene up on genenames.org (HGNC) or Ensembl and use the **approved symbol**.
+Aliases written in parentheses (e.g. `TP53 (p53)`) are tolerated and resolved, but the bare approved symbol
+is cleanest.
+
+### Step 2 — choose an on-ramp
+
+**(a) Plain text — zero friction.** A one-line file is a complete, valid input on its own:
+
+```bash
+echo TP53 > tp53.txt
+```
+
+With no other intent specified, TP53 gets the **default design classes** (`params.default_classes` =
+`coding,promoter`): the canonical-transcript **coding exons (incl. UTRs, ±15 bp splice flank)** plus a
+strand-aware **promoter** window (TSS−2000..+200). That is often all you want for a single gene.
+
+**(b) Scaffolded CSV spec — when you want to control intent.** Generate an editable spec from the symbol
+list with `bin/init_gene_list.py` (it pre-fills the default classes; `coding` is always implied, and
+`promoter` is on by default):
+
+```bash
+python bin/init_gene_list.py tp53.txt -o tp53_panel.csv
+```
+
+That writes a CSV with the standard header and one row per gene, pre-filled:
+
+```csv
+gene,promoter,regulatory,cnv,str,extra_regions,anchors
+TP53,1,0,0,0,,
+```
+
+Now **edit it** to add the intent you want — for TP53, say, turn on the regulatory class and add the common
+**Pro72Arg** polymorphism (`rs1042522`) as an anchor:
+
+```csv
+gene,promoter,regulatory,cnv,str,extra_regions,anchors
+TP53,1,1,0,0,,rs1042522
+```
+
+Each column maps to a **Stage 1 design class**:
+
+| column | what it adds in Stage 1 |
+|---|---|
+| (implicit) | `coding` — canonical exons ±15 bp splice flank (always) |
+| `promoter=1` | strand-aware promoter window (TSS−2000..+200) |
+| `regulatory=1` | intersect the Ensembl Regulatory Build / cCREs over the locus (needs `--regulatory_gff`) |
+| `cnv=1` | even-tiled windows across the whole locus (read-depth CNV) |
+| `str=1` | tile the unique flanks only (repeat core removed at masking) |
+| `anchors=rs1042522` | the rsID ±150 bp, guaranteed ≥2 baits (needs `--rsid_bed` or a dbSNP VCF) |
+
+**(c) Rich Excel workbook** — only when a curated panel already exists in spreadsheet form (the `Variant
+class` → design-class mapping above). For a single new gene you do **not** need this; use (a) or (b).
+
+### Step 3 — make sure references exist
+
+You need a no-alt genome FASTA, a matching GTF, and a specificity index built from that genome (see
+*Reference data*). For human GRCh38, fetch the optional tracks once:
+
+```bash
+bin/fetch_references.sh --outdir refs gtf
+bin/build_specificity_index.sh \
+    --fasta refs/GRCh38.primary_assembly.fa \
+    --aligner blast \
+    --out $PWD/refs/grch38_noalt
+```
+
+### Step 4 — run
+
+```bash
+./.tools/nextflow run main.nf -profile mac_local \
+    --input tp53_panel.csv \
+    --genome_fasta refs/GRCh38.primary_assembly.fa \
+    --gtf refs/Homo_sapiens.GRCh38.112.gtf.gz \
+    --specificity_db $PWD/refs/grch38_noalt \
+    --specificity_aligner blast \
+    --rsid_bed refs/anchors.rsid.bed \
+    --regulatory_gff refs/Homo_sapiens.GRCh38.regulatory_features.gff.gz \
+    --outdir results/tp53
+```
+
+> The real parameter is **`--input`** (it auto-detects plain-text / CSV / Excel). `--regulatory_gff` and
+> `--rsid_bed` are only needed because we turned on `regulatory` and added an anchor; drop them for the
+> plain-text default run.
+
+### Step 5 — read the outputs
+
+Under `results/tp53/` you get the same deliverables as any run (see *Outputs explained*):
+`order_package/baits.fasta` and `baits.csv` (the order-ready baits + metadata),
+`stage9_qc/final_covered_targets.bed` (the as-built handoff), and `qc_dashboard.html` (open it to see the
+per-gene track for TP53 with its exon lane, the GC/Tm windows, and the bait-construct schematic).
+
+### Honest caveat — one small gene is not a pool
+
+TP53 is ~25 kb with ~11 coding exons; on its own it yields only a **few hundred baits** — far below
+oligo-pool synthesis minimums (the smallest tier in `pool_tiers` is **12,000**). So "start from a gene
+name" is really how you **add a gene to a larger panel**: capture economics only work when **tens to
+hundreds of genes share one pool**. Build your CSV spec up to the full gene set, then run once — the
+pool cost is shared across every gene in the file.
 
 ---
 
