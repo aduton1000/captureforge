@@ -59,7 +59,14 @@ def assert_noalt_reference(db, aligner, genome_fai=None):
     if it disagrees with the design genome. This prevents the classic trap of
     pointing CaptureForge at a convenient toplevel/with-alt BLAST db, which makes
     MHC-region genes (e.g. GENE) look non-specific vs their own alt haplotypes."""
-    import os
+    import glob
+    exists = {"blast": glob.glob(db + ".n*"),
+              "bowtie2": glob.glob(db + ".*.bt2*"),
+              "bwa": glob.glob(db + ".bwt") + glob.glob(db + ".bwt.2bit.64")}.get(aligner, ["?"])
+    if not exists:
+        sys.stderr.write(f"ERROR: specificity_db not found: '{db}' (aligner={aligner}). "
+                         f"It must be an ABSOLUTE path to the index/db prefix.\n")
+        sys.exit(3)
     names = db_seqnames(db, aligner)
     if not names:
         return

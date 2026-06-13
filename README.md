@@ -57,29 +57,49 @@ python bin/init_gene_list.py my_genes.txt -o my_panel.spec.csv
 
 # 2. (optional) open my_panel.spec.csv and add promoter / cnv / str / anchor intent per gene
 
-# 3. Run the pipeline
+# 3. Build the specificity index FROM THE NO-ALT genome (one-time; required)
+bin/build_specificity_index.sh --fasta refs/GRCh38.noalt.fa --aligner blast --out refs/grch38_noalt
+
+# 4. Run the pipeline
 nextflow run main.nf -profile mac_local,conda \
     --input my_panel.spec.csv \
-    --genome_fasta refs/GRCh38.fa --gtf refs/GRCh38.112.gtf \
+    --genome_fasta refs/GRCh38.noalt.fa --gtf refs/GRCh38.112.gtf.gz \
+    --specificity_db $PWD/refs/grch38_noalt \
     --outdir results
 ```
 
 A bare `my_genes.txt` works directly too (applies the default `coding + promoter` classes):
 `--input my_genes.txt`.
 
-### ▶ Test profile (10 genes, runs on a Mac in minutes)
+> **Specificity reference must be the NO-ALT primary assembly == the design genome.** The pipeline
+> *enforces* this (fails loudly on alt/decoy/HLA contigs) — a with-alt/toplevel index makes MHC-region
+> genes (e.g. GENE) look non-specific against their own alt haplotypes. `--specificity_db` must be an
+> **absolute** path to the index prefix (it is referenced in place, not staged).
+
+### ▶ Test profile (10 genes, runs on a Mac in ~2 min)
 
 ```bash
-bash test/data/make_test_reference.sh        # subsets the local GRCh38 to test chromosomes
-nextflow run main.nf -profile test,conda
-bash test/check_outputs.sh                    # sanity-checks the outputs
+bash test/data/make_test_reference.sh        # build a tiny mini-genome fixture from your local GRCh38
+nextflow run main.nf -profile test,conda     # or: -profile test (see Apple-Silicon note below)
+bash test/check_outputs.sh                    # sanity-checks; expects all 6 design classes
 ```
+
+**Apple Silicon (arm64) note:** the pinned env builds under Rosetta (osx-64). With `-profile test,conda`
+Nextflow manages the env. If instead you pre-activate the env and run `-profile test` (no conda engine),
+ensure the env's bin is first so `/usr/bin/env python3` resolves to it:
+`conda activate captureforge && export PATH="$CONDA_PREFIX/bin:$PATH"`. The container path (`-profile
+test,docker`) avoids this entirely.
 
 ### ▶ Full panel on the HPC (SLURM + Apptainer)
 
+See **`docs/hpc_deployment.md`** for the full central-install recipe. Short form:
+
 ```bash
-nextflow run main.nf -profile hpc_slurm,apptainer \
-    -params-file params.yaml \
+module load captureforge/0.1.0           # or: nextflow run /shared/apps/captureforge/main.nf
+captureforge-run -params-file my_panel.params.yaml \
+    --genome_fasta   $CF_REFS/GRCh38.primary_assembly.fa \
+    --gtf            $CF_REFS/GRCh38.112.gtf.gz \
+    --specificity_db $CF_REFS/grch38_noalt_bt2 --specificity_aligner bowtie2 \
     --slurm_partition <queue>
 ```
 

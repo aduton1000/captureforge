@@ -84,3 +84,7 @@ env/.conda/
 env/*.log
 env/.create_env.log
 env/condaenv.*
+
+# alternate nextflow work dirs
+work*/
+.nextflow*

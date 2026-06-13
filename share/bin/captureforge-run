@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Shared launcher for CaptureForge on the HPC. After `module load captureforge`,
+# users run:  captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue>
+# Forwards all args to `nextflow run`. Defaults to the hpc_slurm,apptainer profile.
+set -euo pipefail
+
+: "${CAPTUREFORGE_HOME:?module load captureforge first (CAPTUREFORGE_HOME unset)}"
+PROFILE="${CAPTUREFORGE_PROFILE:-hpc_slurm,apptainer}"
+
+# Use the central reference dir unless the caller overrides via params/CLI.
+REFS="${CAPTUREFORGE_REFS:-}"
+extra=()
+if [[ -n "$REFS" && -d "$REFS" ]]; then
+  [[ -e "$REFS/grch38_noalt_bt2.1.bt2" || -e "$REFS/grch38_noalt.nsq" ]] || \
+    echo "[captureforge-run] note: build a no-alt specificity index in $REFS (see docs/hpc_deployment.md)" >&2
+fi
+
+echo "[captureforge-run] nextflow run ${CAPTUREFORGE_HOME}/main.nf -profile ${PROFILE} $*" >&2
+exec nextflow run "${CAPTUREFORGE_HOME}/main.nf" \
+    -profile "${PROFILE}" \
+    -with-apptainer "${CAPTUREFORGE_SIF:-}" \
+    "${extra[@]}" "$@"
