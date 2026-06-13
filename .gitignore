@@ -1,0 +1,86 @@
+# ── CaptureForge .gitignore ───────────────────────────────────────────────
+# Never commit large reference data, indices, or runtime outputs.
+
+# Reference data & indices
+refs/
+data/
+indices/
+*.fa
+*.fasta
+*.fa.gz
+*.fasta.gz
+*.fna
+*.fai
+*.gzi
+*.dict
+*.2bit
+# aligner / blast indices
+*.bt2
+*.bt2l
+*.bwt
+*.bwt.2bit.64
+*.amb
+*.ann
+*.pac
+*.sa
+*.0123
+*.ndb
+*.nhr
+*.nin
+*.njs
+*.not
+*.nsq
+*.ntf
+*.nto
+# GenMap / mappability
+*.genmap.*
+# annotations are fetched, not committed
+*.gtf
+*.gtf.gz
+*.gff
+*.gff3
+*.gff3.gz
+# variant resources
+dbsnp*.vcf*
+*.vcf.gz.tbi
+
+# Nextflow runtime
+work/
+.nextflow/
+.nextflow.log*
+results/
+report-*.html
+timeline-*.html
+trace-*.txt
+dag-*.html
+
+# Provenance/checksums for fetched refs (machine-specific paths)
+refs.provenance.json
+
+# Python / conda
+__pycache__/
+*.pyc
+.venv/
+env/.conda/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Keep example/test inputs and templates (explicit allowlist)
+!assets/gene_lists/*.xlsx
+!assets/gene_lists/*.csv
+!assets/gene_lists/*.tsv
+!assets/gene_lists/*.txt
+!test/data/**
+
+# local tool installs
+.tools/
+.nextflow/
+
+# transient conda build logs
+env/*.log
+env/.create_env.log
+env/condaenv.*

@@ -1,0 +1,6 @@
+# CaptureForge example: bare gene symbols, one per line
+GENE
+GENE
+GENE (GENE)
+GENE
+GENE

@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+title: >-
+  CaptureForge: a general-purpose, organism-agnostic hybridization-capture
+  probe (bait) design pipeline
+message: If you use CaptureForge, please cite it.
+type: software
+authors:
+  - name: Genomics & Bioinformatics Core
+abstract: >-
+  CaptureForge is a reusable, end-to-end Nextflow (DSL2) pipeline that turns a
+  gene list plus per-gene design intent into order-ready biotinylated-bait oligo
+  sequences and a full QC/design report. It is disease- and organism-agnostic:
+  any gene list and (where feasible) any reference genome are supported by
+  changing inputs and config only, with no code edits.
+keywords:
+  - hybridization capture
+  - bait design
+  - probe design
+  - targeted sequencing
+  - nextflow
+  - bioinformatics
+license: MIT
+version: 0.1.0
+date-released: 2026-06-13

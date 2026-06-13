@@ -1,0 +1,36 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  CaptureForge — Apptainer/Singularity definition (HPC; Docker usually banned)
+#  Build:  apptainer build captureforge.sif env/captureforge.def
+#  Native linux-64 toolchain (no emulation) for the production multi-gene run.
+# ═══════════════════════════════════════════════════════════════════════════
+Bootstrap: docker
+From: mambaorg/micromamba:1.5.8
+
+%files
+    env/captureforge.yml /opt/captureforge.yml
+
+%post
+    micromamba install -y -n base -f /opt/captureforge.yml
+    micromamba clean --all --yes
+    echo 'export PATH=/opt/conda/bin:$PATH' >> $SINGULARITY_ENVIRONMENT
+
+%environment
+    export PATH=/opt/conda/bin:$PATH
+    export LC_ALL=C
+
+%test
+    bedtools --version
+    samtools --version | head -1
+    bowtie2 --version | head -1
+    genmap --version
+    dustmasker -version
+    python -c "import pysam, Bio, pyfaidx, primer3, pandas, openpyxl, jinja2, matplotlib; print('py libs OK')"
+
+%labels
+    Name CaptureForge
+    Version 0.1.0
+    License MIT
+
+%help
+    CaptureForge hybridization-capture probe design pipeline.
+    Run via Nextflow: nextflow run main.nf -profile hpc_slurm,apptainer -params-file params.yaml

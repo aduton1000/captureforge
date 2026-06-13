@@ -1,0 +1,48 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  CaptureForge — example params file
+#  Run:  nextflow run main.nf -profile mac_local,conda -params-file params.yaml
+#  Only `input`, `genome_fasta`, and `gtf` are strictly required.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ---- Input gene list (plain-text symbols / CSV-TSV spec / Excel workbook) ----
+input:        assets/gene_lists/study_candidate_panel_expanded.xlsx
+excel_sheet:  "Candidate Panel (expanded)"
+panel_name:   panel
+
+# ---- Reference data (local GRCh38 primary/no-alt; see bin/fetch_references.sh) ----
+genome_build:     GRCh38
+genome_fasta:     /path/to/GRCh38.noalt.fa
+gtf:              refs/Homo_sapiens.GRCh38.112.gtf.gz
+mane_gff:         refs/MANE.GRCh38.v1.4.ensembl_genomic.gff.gz   # optional (GTF already carries MANE_Select tags)
+regulatory_gff:   refs/Homo_sapiens.GRCh38.regulatory_features.gff.gz   # optional
+rmsk_bed:         refs/rmsk.GRCh38.bed.gz        # optional
+segdups_bed:      refs/segdups.GRCh38.bed.gz     # optional
+dbsnp_vcf:        refs/dbsnp.GRCh38.vcf.gz       # optional (rsID anchors)
+ensembl_release:  112
+
+# ---- Bait geometry ----
+bait_len:     120
+
+# ---- Specificity thresholds ----
+specificity_aligner:    bowtie2
+offtarget_min_identity: 0.90
+offtarget_min_lenfrac:  0.50
+offtarget_max_hits:     1
+
+# ---- Composition windows ----
+gc_min:           0.25
+gc_max:           0.70
+homopolymer_max:  10
+tm_min:           60.0
+tm_max:           90.0
+
+# ---- Synthesis format: dna_pool | ivt_rna | ready_to_use ----
+bait_format:  ivt_rna
+synth_max_len: 170
+
+# ---- Cost model ----
+per_oligo_price: 0.00200
+pool_tiers:      [12000, 92000, 244000]
+
+# ---- Output ----
+outdir:  results
