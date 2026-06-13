@@ -141,10 +141,40 @@ provenance file. See `docs/design_decisions.md` for exactly which releases are u
 
 ---
 
-## Project layout
+## What's in this repository
 
-See `docs/design_decisions.md` for the running log of every default and its rationale, and the
-in-repo directory tree described in the build brief.
+This repo is a complete, runnable Nextflow pipeline plus its documentation and a fully worked example.
+
+| Path | Contents |
+|---|---|
+| `main.nf`, `subworkflows/` | Pipeline entrypoint and the DSL2 subworkflow that wires the 14 processes |
+| `modules/` | One Nextflow module per stage (target definition → masking → tiling → specificity → composition → re-tiling → boost/dedup → synthesis → QC → export) plus the visualization modules |
+| `bin/` | The stage tools and helpers (Python/Bash): `parse_gene_list.py`, `init_gene_list.py`, `define_targets.py`, `apply_masking.py`, `tile_candidates.py`, `specificity_filter.py`, `composition_filter.py`, `gap_retile.py`, `boost_dedup.py`, `scaffold_synthesis.py`, `aggregate_qc.py`, `export_package.py`; references: `fetch_references.sh`, `build_specificity_index.sh`, `resolve_rsids.py`; visualization: `make_figures.py`, `make_dag.py`, `make_dashboard.py`; docs: `build_manual.sh`; test fixture: `make_test_reference.py` |
+| `nextflow.config`, `conf/` | All parameters and the three profiles (`test`, `mac_local`, `hpc_slurm`) + container engines (`conda`/`docker`/`apptainer`) |
+| `params.example.yaml`, `params.full.yaml` | Example and full-run parameter files |
+| `env/` | Pinned conda environment (`captureforge.yml`) + `Dockerfile` + Apptainer `.def` |
+| `assets/` | Input schema (`gene_list_schema.md`), small example gene lists, and synthesizer-template notes |
+| `test/` | A tiny mini-genome fixture and sanity check for the `test` profile (runs in ~2 min) |
+| `share/` | Lmod modulefile + the `captureforge-run` wrapper for a shared HPC install |
+| `docs/` | **The documentation and worked example** (see below) |
+
+### Documentation & worked example (`docs/`)
+
+- **`manual/captureforge_manual.{md,pdf,docx}`** — the full user manual (concepts, install for laptop *and*
+  HPC, the "start from a gene name" tutorial, running on different organisms, interpreting QC, troubleshooting).
+- **`DESIGN_REPORT.md`** — the design & QC report for the worked example run.
+- **`qc_dashboard.html`** — the self-contained QC dashboard from that run (open it in a browser; all figures
+  are embedded).
+- **`design_decisions.md`** — a running log of every default and its rationale.
+- **`hpc_deployment.md`** — the full shared-cluster install/deploy recipe.
+- **`manual/figures/`** — the figures used in the manual (per-gene coverage tracks, GC/Tm, specificity,
+  pipeline DAG, bait-construct schematic, …).
+
+**The worked example** throughout `docs/` is a **multi-gene human study-susceptibility panel** (N unique
+baits, ~NN.N% mappable coverage, 12k oligo-pool tier). The curated source workbook is **not** distributed
+(it may contain unpublished panel data); the example is fully reproducible from the on-ramps and tracked
+outputs. Nothing about the pipeline is study-specific — it is the disease/organism-agnostic example used
+to exercise every design class.
 
 ## License
 
