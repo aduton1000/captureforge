@@ -1,0 +1,4 @@
+% Map the one Unicode glyph the body font (Helvetica Neue) lacks to a LaTeX
+% equivalent, for the xelatex PDF build. (All other glyphs render natively.)
+\usepackage{newunicodechar}
+\newunicodechar{→}{\ensuremath{\rightarrow}}
