@@ -36,7 +36,8 @@ CAPTIONS = {
     "per_class_summary": "Final unique baits per design class (coding dominates; cnv/str come from whole-locus tiling).",
     "cost_pool_tier": "Unique baits sit under the 12k oligo-pool tier (synthesis-pool cost only, not assay cost).",
     "baits_per_gene_by_class": "Per-gene bait composition by design class (multi-class baits attributed to their primary class).",
-    "coverage_tracks": "Lanes: target (raw, class-colored) / tileable (post-mask) / baits (final). A baits gap where tileable is ALSO empty = masked/uncapturable (expected); a baits gap where tileable is present = a real gap to investigate.",
+    "coverage_tracks": "Lanes: target (raw, class-colored) / exons (coding exons ±15 bp splice flank) / tileable (post-mask) / baits (final). A baits gap where tileable is ALSO empty = masked/uncapturable (expected); a gap where tileable is present = a real gap. Use the exon lane to check no exon is missed.",
+    "bait_construct": "Bait-construct layout per synthesis format (segments scaled by length in nt). For ivt_rna the bait is flanked by universal PCR handles and a T7 promoter for in-vitro transcription to biotinylated RNA; dna_pool / ready_to_use are the bait core only.",
 }
 
 
@@ -79,6 +80,24 @@ def load_bed_by_gene(path, gene_field):
         cls = parts[1] if len(parts) > 1 else "coding"
         d[gene].append((f[0], int(f[1]), int(f[2]), cls))
     return d
+
+
+def load_exons_by_gene(path):
+    """From targets.raw.bed, the coding-exon intervals (gene|coding|exonN, exon ±splice
+    flank) per gene, plus the distinct-exon count per gene."""
+    ivs = defaultdict(list)
+    exon_names = defaultdict(set)
+    if not os.path.exists(path):
+        return ivs, exon_names
+    for l in open(path):
+        if not l.strip():
+            continue
+        f = l.rstrip("\n").split("\t")
+        parts = f[3].split("|")
+        if len(parts) >= 3 and parts[1] == "coding" and parts[2].startswith("exon"):
+            ivs[parts[0]].append((f[0], int(f[1]), int(f[2])))
+            exon_names[parts[0]].add(parts[2])
+    return ivs, exon_names
 
 
 def fig_coverage_by_class(W, figdir):
@@ -223,36 +242,90 @@ def fig_cost_tier(W, figdir):
     save(fig, figdir, "cost_pool_tier")
 
 
+def fig_bait_construct(W, figdir):
+    """Color-coded schematic of the synthesized bait construct for every format
+    CaptureForge can produce; the configured format is marked. Segment lengths
+    (nt) come from the run's stage-8 summary / bait_len."""
+    s8 = load_stage(W, 8)
+    s3 = load_stage(W, 3)
+    active = s8.get("format", "ivt_rna")
+    bait_len = int(s3.get("bait_len", 120))
+    m = re.match(r"^(\w+)\+T7\((\w+)\)\+bait\+(\w+)$", s8.get("construct", "") or "")
+    h5, t7, h3 = (len(m.group(1)), len(m.group(2)), len(m.group(3))) if m else (15, 20, 15)
+    C = {"h5": "#4e79a7", "t7": "#59a14f", "bait": "#e15759", "h3": "#76b7b2"}
+    FORMATS = {
+        "ivt_rna": [("5′ PCR handle", h5, "h5"), ("T7 promoter", t7, "t7"),
+                    ("bait (probe)", bait_len, "bait"), ("3′ PCR handle", h3, "h3")],
+        "dna_pool": [("bait (probe)", bait_len, "bait")],
+        "ready_to_use": [("bait (probe)", bait_len, "bait")],
+    }
+    order = ["ivt_rna", "dna_pool", "ready_to_use"]
+    fig, ax = plt.subplots(figsize=(9, 3.2))
+    for i, fmt in enumerate(order):
+        y = len(order) - 1 - i
+        x = 0
+        for _, ln, key in FORMATS[fmt]:
+            ax.barh(y, ln, left=x, height=0.55, color=C[key], edgecolor="white", linewidth=1.2)
+            ax.text(x + ln / 2, y, str(ln), ha="center", va="center", fontsize=7,
+                    color="white", fontweight="bold")
+            x += ln
+        ax.text(-6, y, fmt + ("  ◀ run" if fmt == active else ""), ha="right", va="center",
+                fontsize=9, fontweight="bold" if fmt == active else "normal")
+        ax.text(x + 6, y, f"{x} nt", ha="left", va="center", fontsize=8, color="#333")
+    ax.set_xlim(-72, 230); ax.set_ylim(-0.6, len(order) - 0.4)
+    ax.set_yticks([]); ax.set_xlabel("length (nt)"); ax.grid(False)
+    ax.set_title(f"Bait-construct schematic by synthesis format  (bait core = {bait_len} nt; "
+                 f"numbers = nt per segment)")
+    # legend in the empty lower-right area so it never collides with the caption
+    ax.legend(handles=[Patch(color=C["h5"], label="5′ PCR handle"),
+                       Patch(color=C["t7"], label="T7 promoter"),
+                       Patch(color=C["bait"], label="bait (probe)"),
+                       Patch(color=C["h3"], label="3′ PCR handle")],
+              ncol=2, fontsize=6.5, loc="lower right", bbox_to_anchor=(1.0, -0.02),
+              framealpha=0.95, edgecolor="#cccccc")
+    save(fig, figdir, "bait_construct")
+
+
+EXON_COLOR = "#117733"   # distinct from the coding-class blue used in the target lane
+
 def fig_coverage_tracks(W, figdir, per_page=4):
     raw = load_bed_by_gene(os.path.join(W, "targets.raw.bed"), 0)
     masked = load_bed_by_gene(os.path.join(W, "targets.masked.bed"), 0)
     baits = load_bed_by_gene(os.path.join(W, "baits.dedup.bed"), 1)   # CF_x|gene|class
+    exons, exon_names = load_exons_by_gene(os.path.join(W, "targets.raw.bed"))
     genes = sorted(raw.keys())
     pages = math.ceil(len(genes) / per_page)
+    # four lanes (top→bottom): target / exons / tileable / baits
+    LANES = {"target": (2.6, 0.8), "exons": (1.85, 0.55), "tileable": (1.05, 0.5), "baits": (0.25, 0.5)}
     for pg in range(pages):
         sub = genes[pg * per_page:(pg + 1) * per_page]
-        # taller panels + generous vertical gap so coordinate ticks never collide
-        # with the next gene's title.
-        fig, axes = plt.subplots(len(sub), 1, figsize=(10, 2.3 * len(sub)), squeeze=False,
-                                 gridspec_kw={"hspace": 1.15})
+        fig, axes = plt.subplots(len(sub), 1, figsize=(10, 2.6 * len(sub)), squeeze=False,
+                                 gridspec_kw={"hspace": 1.2})
         for ax, gene in zip(axes[:, 0], sub):
             ivs = raw.get(gene, [])
             lo = min(s for _, s, e, _ in ivs); hi = max(e for _, s, e, _ in ivs)
             span = hi - lo or 1; pad = span * 0.02
             for ch, s, e, cls in ivs:                                        # target lane
-                ax.broken_barh([(s, e - s)], (1.6, 0.8), color=CLASS_COLORS.get(cls, "#333"), alpha=0.85)
+                ax.broken_barh([(s, e - s)], LANES["target"], color=CLASS_COLORS.get(cls, "#333"), alpha=0.85)
+            for ch, s, e in exons.get(gene, []):                             # exon lane
+                ax.broken_barh([(s, e - s)], LANES["exons"], color=EXON_COLOR)
             for ch, s, e, cls in masked.get(gene, []):                       # tileable lane
-                ax.broken_barh([(s, e - s)], (0.9, 0.5), color="#bbbbbb")
+                ax.broken_barh([(s, e - s)], LANES["tileable"], color="#bbbbbb")
             for ch, s, e, cls in baits.get(gene, []):                        # baits lane
-                ax.broken_barh([(s, e - s)], (0.2, 0.5), color="black")
-            ax.set_xlim(lo - pad, hi + pad); ax.set_ylim(0, 2.6)
-            ax.set_yticks([0.45, 1.15, 2.0]); ax.set_yticklabels(["baits", "tileable", "target"], fontsize=7)
-            ax.set_title(f"{gene}  ({ivs[0][0]}:{lo:,}-{hi:,})", fontsize=8.5, loc="left", pad=4)
+                ax.broken_barh([(s, e - s)], LANES["baits"], color="black")
+            ax.set_xlim(lo - pad, hi + pad); ax.set_ylim(0, 3.55)
+            ax.set_yticks([0.5, 1.3, 2.1, 3.0])
+            ax.set_yticklabels(["baits", "tileable", "exons", "target"], fontsize=7)
+            n_ex = len(exon_names.get(gene, ()))
+            ex_txt = f" · {n_ex} exons" if n_ex else ""
+            ax.set_title(f"{gene}  ({ivs[0][0]}:{lo:,}-{hi:,}{ex_txt})", fontsize=8.5, loc="left", pad=4)
             ax.tick_params(axis="x", labelsize=6.5)
             ax.grid(False)
         present = sorted({c for g in sub for *_, c in raw.get(g, [])})
-        fig.legend(handles=[Patch(color=CLASS_COLORS.get(c, "#333"), label=c) for c in present],
-                   loc="lower center", ncol=len(present), fontsize=7, bbox_to_anchor=(0.5, -0.01))
+        handles = [Patch(color=CLASS_COLORS.get(c, "#333"), label=c) for c in present]
+        handles.append(Patch(color=EXON_COLOR, label="exon (±15 bp)"))
+        fig.legend(handles=handles, loc="lower center", ncol=len(handles), fontsize=7,
+                   bbox_to_anchor=(0.5, -0.01))
         fig.suptitle(f"Per-gene coverage tracks (page {pg+1}/{pages})", y=0.995, fontsize=11)
         save(fig, figdir, f"coverage_tracks_page{pg+1}")
     return pages
@@ -322,6 +395,7 @@ def main():
     fig_per_class_summary(W, args.figdir)
     fig_baits_per_gene_by_class(W, args.figdir, args.genes_per_page)
     fig_cost_tier(W, args.figdir)
+    fig_bait_construct(W, args.figdir)
     pages = fig_coverage_tracks(W, args.figdir, args.tracks_per_page)
     # polished pipeline DAG (graphviz). Best-effort: skip cleanly if unavailable.
     dag = os.path.join(os.path.dirname(os.path.abspath(__file__)), "make_dag.py")

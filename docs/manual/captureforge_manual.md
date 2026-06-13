@@ -607,9 +607,13 @@ Each per-gene panel has three lanes: **target** (raw, colored by class), **tilea
 - A gap in **baits** where **tileable** is present → a **real** gap (a bait was rejected for specificity or
   composition) → worth investigating.
 
-![A clean page (genes GENE, GENE, GENE, GENE): the `baits` lane closely tracks the `target` and `tileable` lanes — exons are well covered with only small, expected gaps. (4 genes/page, spaced so coordinate ticks never collide with the next gene's title.)](figures/coverage_tracks_page1.png){width=92%}
+Each panel now has **four lanes** — `target` (raw, class-colored), `exons` (the coding exons ±15 bp splice
+flank, in green, right under the target so you can check no exon is missed), `tileable` (post-mask), and
+`baits` (final) — and the gene label includes the **exon count** alongside the chromosome location.
 
-![A hard page including GENE (red `cnv` lane): note the large stretch in the middle where the `baits` lane is sparse even though `target` is present — these align with GENE's segmental-dup / LCR blocks. This visual is why GENE is flagged breakpoint-blind despite having many bins. GENE looks the same on its own page.](figures/coverage_tracks_page4.png){width=92%}
+![A clean page (genes GENE, GENE, GENE, GENE): the `baits` lane closely tracks the `target`, `exons`, and `tileable` lanes — every exon is well covered with only small, expected gaps. (4 genes/page, spaced so coordinate ticks never collide with the next gene's title; the label shows the exon count.)](figures/coverage_tracks_page1.png){width=92%}
+
+![A hard page including GENE (red `cnv` lane, 22 exons): the `target` lane is the whole CNV locus, the green `exons` lane shows where the coding exons actually sit, and the `baits` lane is sparse in the middle where GENE's segmental-dup / LCR blocks are unmappable. The exon lane lets you confirm which exons are still covered despite the breakpoint-blind regions. GENE looks the same on its own page.](figures/coverage_tracks_page4.png){width=92%}
 
 ## Composition QC — GC and Tm
 
@@ -709,6 +713,14 @@ script defaults apply instead. Setting them has no effect:
 | `ivt_rna` (default) | DNA oligos = `handle5 + T7 + bait + handle3` (170 nt) | Amplify by PCR, transcribe to **biotinylated RNA** baits in-house (T7). Lowest cost per capture; some wet-lab work |
 | `dna_pool` | the bait cores only | Synthesized DNA oligo pool; simplest, but DNA baits and no amplification |
 | `ready_to_use` | bait sequences + target BED | For a finished-bait vendor service (Arbor myBaits etc.) |
+
+The schematic below shows what the synthesized oligo looks like for each format (segments scaled by length
+in nt). For `ivt_rna` the 120 nt bait (probe) is flanked by a 5′ universal PCR handle, a T7 promoter, and a
+3′ PCR handle (170 nt total): PCR-amplify the pool, then in-vitro-transcribe with T7 into biotinylated RNA
+baits. `dna_pool` and `ready_to_use` are the bait core only. The handle/T7 sequences are configurable
+(`pcr_handle_5`, `t7_promoter`, `pcr_handle_3`); the lengths shown come from the run's stage-8 summary.
+
+![Bait-construct schematic for every synthesis format CaptureForge can produce; segments are scaled by length in nt and the format used for this run is marked `◀ run`. ivt_rna = 5′ PCR handle (15) + T7 promoter (20) + bait (120) + 3′ PCR handle (15) = 170 nt; dna_pool / ready_to_use = the 120 nt bait core.](figures/bait_construct.png){width=80%}
 
 ## Mapping to a synthesizer template
 

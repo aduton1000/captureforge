@@ -23,7 +23,8 @@ CAPTIONS = {
     "per_class_summary": "Final unique baits per design class (coding dominates; cnv/str from whole-locus tiling).",
     "convergence": "Re-tiling plateaus below the 95% target — correct, because residual gaps are non-specific/repeat.",
     "cost_pool_tier": "Unique baits sit under the 12k oligo-pool tier (synthesis-pool cost only).",
-    "coverage_tracks": "Lanes: target (raw) / tileable (post-mask) / baits (final). A baits gap where tileable is also empty = masked/uncapturable (expected); a gap where tileable is present = a real gap.",
+    "bait_construct": "What the synthesized oligo looks like for each format (segments scaled by nt). ivt_rna = 5′ handle + T7 + bait + 3′ handle; dna_pool / ready_to_use = bait core only. The configured format is marked.",
+    "coverage_tracks": "Lanes: target (raw) / exons (coding exons ±15 bp) / tileable (post-mask) / baits (final). A baits gap where tileable is also empty = masked/uncapturable (expected); a gap where tileable is present = a real gap. The exon lane shows whether any exon is missed.",
 }
 
 def caption_for(name):
@@ -94,6 +95,10 @@ TEMPLATE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 
  <section><h2>Tiling / convergence / pool</h2>
   {% for f in ['per_class_summary','convergence','cost_pool_tier'] %}{{ figure(f) }}{% endfor %}
+ </section>
+
+ <section><h2>Bait construct (synthesis)</h2>
+  {{ figure('bait_construct') }}
  </section>
 
  <section><h2>Per-gene coverage tracks</h2>
