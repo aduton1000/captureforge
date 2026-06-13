@@ -69,12 +69,18 @@ env/.conda/
 .idea/
 .vscode/
 
-# Keep example/test inputs and templates (explicit allowlist)
-!assets/gene_lists/*.xlsx
+# Never commit curated gene-list workbooks (may contain unpublished panel data).
+# The study workbook was purged from history; keep it out for good.
+assets/gene_lists/*.xlsx
+
+# Keep the small example/test inputs and templates (text/CSV only)
 !assets/gene_lists/*.csv
 !assets/gene_lists/*.tsv
 !assets/gene_lists/*.txt
 !test/data/**
+
+# Local-only preserved data (e.g. the study workbook copy) — never committed
+_local/
 
 # local tool installs
 .tools/

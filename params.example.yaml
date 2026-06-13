@@ -5,9 +5,11 @@
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ---- Input gene list (plain-text symbols / CSV-TSV spec / Excel workbook) ----
-input:        assets/gene_lists/study_candidate_panel_expanded.xlsx
-excel_sheet:  "Candidate Panel (expanded)"
-panel_name:   panel
+# Points at a tracked example on-ramp. Swap for your own gene list, CSV spec
+# (see bin/init_gene_list.py), or curated .xlsx workbook.
+input:        assets/gene_lists/example_spec.csv
+excel_sheet:  "Candidate Panel (expanded)"   # only used when input is an .xlsx
+panel_name:   example_panel
 
 # ---- Reference data (local GRCh38 primary/no-alt; see bin/fetch_references.sh) ----
 genome_build:     GRCh38
