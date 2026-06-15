@@ -70,6 +70,7 @@ env/.conda/
 
 # OS / editor
 .DS_Store
+**/.DS_Store
 *.swp
 .idea/
 .vscode/
@@ -87,8 +88,11 @@ assets/gene_lists/*.xlsx
 # Local-only preserved data (e.g. the study workbook copy) — never committed
 _local/
 
-# local tool installs
-.tools/
+# local tool installs — ignore Nextflow's runtime cruft (downloaded distributions,
+# caches, framework jars) but TRACK the small vendored Seqera launcher script so a
+# fresh clone has the `.tools/nextflow` the CLI prefers.
+.tools/*
+!.tools/nextflow
 .nextflow/
 
 # transient conda build logs
