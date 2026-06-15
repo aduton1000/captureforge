@@ -1,6 +1,11 @@
 # ── CaptureForge .gitignore ───────────────────────────────────────────────
 # Never commit large reference data, indices, or runtime outputs.
 
+# Per-user working config (contains real machine-specific paths); params.example.yaml
+# is the public template. Never track the filled-in copy.
+params.full.yaml
+params.yaml
+
 # Reference data & indices
 refs/
 data/

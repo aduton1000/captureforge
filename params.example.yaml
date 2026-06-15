@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════════════════
 #  CaptureForge — example params file
-#  Run:  nextflow run main.nf -profile mac_local,conda -params-file params.yaml
+#  Run:  captureforge run -profile local,conda -params-file params.yaml
 #  Only `input`, `genome_fasta`, and `gtf` are strictly required.
 # ═══════════════════════════════════════════════════════════════════════════
 
