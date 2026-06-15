@@ -32,8 +32,9 @@ def read_symbols(path: str) -> list[str]:
                 seen.add(s); out.append(s)
     return out
 
-def main():
-    ap = argparse.ArgumentParser(description="Scaffold an editable CaptureForge spec CSV from bare symbols.")
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="captureforge panel",
+                                 description="Scaffold an editable CaptureForge spec CSV from bare symbols.")
     ap.add_argument("symbols", help="plain-text file, one gene symbol per line")
     ap.add_argument("-o", "--output", default="panel.spec.csv")
     ap.add_argument("--default-classes", default="coding,promoter",
@@ -41,7 +42,7 @@ def main():
     ap.add_argument("--gtf", help="(optional) GTF for track-based cnv/str suggestions")
     ap.add_argument("--segdups", help="(optional) segmental-dup BED → suggest cnv")
     ap.add_argument("--rmsk", help="(optional) tandem-repeat BED → suggest str")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     genes = read_symbols(args.symbols)
     if not genes:
@@ -67,7 +68,7 @@ def main():
         f"  Edit it to add intent: promoter/regulatory/cnv/str (1/0), "
         f"extra_regions (chr:start-end;…), anchors (rsIDs).\n"
         f"  coding is always implied. Then run:\n"
-        f"    nextflow run main.nf -profile mac_local,conda --input {args.output} \\\n"
+        f"    captureforge run -profile local,conda --input {args.output} \\\n"
         f"        --genome_fasta <ref.fa> --gtf <ann.gtf>\n")
     if suggestions:
         flagged = {g: s for g, s in suggestions.items() if s}

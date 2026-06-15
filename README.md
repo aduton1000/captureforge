@@ -50,10 +50,19 @@ curl -s https://get.nextflow.io | bash && sudo mv nextflow /usr/local/bin/
 mamba env create -f env/captureforge.yml                         # Linux (native)
 CONDA_SUBDIR=osx-64 mamba env create -f env/captureforge.yml     # macOS Apple Silicon (Rosetta)
 
-# 4. (optional) containers instead of conda
+# 4. register the `captureforge` command (thin CLI front door)
+pip install -e .
+
+# 5. (optional) containers instead of conda
 docker build -t captureforge:0.1.0 -f env/Dockerfile .           # Mac/Linux dev
 apptainer build captureforge.sif env/captureforge.def            # HPC
 ```
+
+A run composes **two** profiles: an **execution** profile (`local` = this machine — any Linux/macOS,
+Windows via WSL2; `hpc_slurm` = a cluster) and a **packaging** profile (`conda` / `docker` / `apptainer`
+= how dependencies are provided) — e.g. `-profile local,conda`. `local` is **not** Mac-specific
+(`mac_local` remains a deprecated alias). The `captureforge` CLI is additive — the raw forms
+(`./.tools/nextflow run main.nf …`, `python bin/init_gene_list.py …`) still work.
 
 You also need reference data (a no-alt genome FASTA + GTF, and a specificity index built from it) — see
 *Reference data* below and the *Quickstart*. The manual (`docs/manual`) walks through both a laptop install
@@ -68,21 +77,24 @@ env active (`conda activate captureforge`). You have nothing but gene symbols, o
 
 ```bash
 # 1. Scaffold an editable design-spec CSV pre-filled with default design classes
-python bin/init_gene_list.py my_genes.txt -o my_panel.spec.csv
+captureforge panel my_genes.txt -o my_panel.spec.csv
 
 # 2. (optional) edit my_panel.spec.csv to add promoter / regulatory / cnv / str / anchor intent per gene
 #    (skip this to keep the defaults: coding exons + promoter)
 
 # 3. Build the specificity index FROM THE NO-ALT genome (one-time; required)
-bin/build_specificity_index.sh --fasta refs/GRCh38.noalt.fa --aligner blast --out $PWD/refs/grch38_noalt
+captureforge index --fasta refs/GRCh38.noalt.fa --aligner blast --out $PWD/refs/grch38_noalt
 
 # 4. Run the pipeline
-nextflow run main.nf -profile mac_local,conda \
+captureforge run -profile local,conda \
     --input my_panel.spec.csv \
     --genome_fasta refs/GRCh38.noalt.fa --gtf refs/GRCh38.112.gtf.gz \
     --specificity_db $PWD/refs/grch38_noalt \
     --outdir results
 ```
+
+(Raw forms still work: `python bin/init_gene_list.py …`, `bin/build_specificity_index.sh …`,
+`./.tools/nextflow run main.nf …`.)
 
 A bare `my_genes.txt` works directly too (applies the default `coding + promoter` classes):
 `--input my_genes.txt`.
@@ -96,15 +108,14 @@ A bare `my_genes.txt` works directly too (applies the default `coding + promoter
 
 ```bash
 bash test/data/make_test_reference.sh        # build a tiny mini-genome fixture from your local GRCh38
-nextflow run main.nf -profile test,conda     # or: -profile test (see Apple-Silicon note below)
+captureforge run -profile test,conda         # or: -profile test (see Apple-Silicon note below)
 bash test/check_outputs.sh                    # sanity-checks; expects all 6 design classes
 ```
 
 **Apple Silicon (arm64) note:** the pinned env builds under Rosetta (osx-64). With `-profile test,conda`
-Nextflow manages the env. If instead you pre-activate the env and run `-profile test` (no conda engine),
-ensure the env's bin is first so `/usr/bin/env python3` resolves to it:
-`conda activate captureforge && export PATH="$CONDA_PREFIX/bin:$PATH"`. The container path (`-profile
-test,docker`) avoids this entirely.
+Nextflow manages the env. For a local run without a container engine, the `captureforge` env must be
+active so the env's tools are on PATH — `captureforge run` **warns if it isn't** (then just
+`conda activate captureforge`). The container path (`-profile test,docker`) avoids this entirely.
 
 ### ▶ Full panel on the HPC (SLURM + Apptainer)
 
@@ -166,7 +177,7 @@ This repo is a complete, runnable Nextflow pipeline plus its documentation and a
 | `main.nf`, `subworkflows/` | Pipeline entrypoint and the DSL2 subworkflow that wires the 14 processes |
 | `modules/` | One Nextflow module per stage (target definition → masking → tiling → specificity → composition → re-tiling → boost/dedup → synthesis → QC → export) plus the visualization modules |
 | `bin/` | The stage tools and helpers (Python/Bash): `parse_gene_list.py`, `init_gene_list.py`, `define_targets.py`, `apply_masking.py`, `tile_candidates.py`, `specificity_filter.py`, `composition_filter.py`, `gap_retile.py`, `boost_dedup.py`, `scaffold_synthesis.py`, `aggregate_qc.py`, `export_package.py`; references: `fetch_references.sh`, `build_specificity_index.sh`, `resolve_rsids.py`; visualization: `make_figures.py`, `make_dag.py`, `make_dashboard.py`; docs: `build_manual.sh`; test fixture: `make_test_reference.py` |
-| `nextflow.config`, `conf/` | All parameters and the three profiles (`test`, `mac_local`, `hpc_slurm`) + container engines (`conda`/`docker`/`apptainer`) |
+| `nextflow.config`, `conf/` | All parameters and the three profiles (`test`, `local` [`mac_local` = deprecated alias], `hpc_slurm`) + container engines (`conda`/`docker`/`apptainer`) |
 | `params.example.yaml`, `params.full.yaml` | Example and full-run parameter files |
 | `env/` | Pinned conda environment (`captureforge.yml`) + `Dockerfile` + Apptainer `.def` |
 | `assets/` | Input schema (`gene_list_schema.md`), small example gene lists, and synthesizer-template notes |

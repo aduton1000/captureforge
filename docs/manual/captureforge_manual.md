@@ -104,8 +104,11 @@ under `results/<outdir>/stageN_*/`, and emits a `stageN_summary.json` of metrics
 | 10 — Export | `export_package.py` | dedup + synthesis + QC | `baits.fasta`, `baits.csv`, `order_generic.tsv`, `MANIFEST`, `provenance.json` |
 | viz | `make_figures.py`, `make_dashboard.py` | QC + BEDs | `figures/*.png/svg`, `qc_dashboard.html` |
 
-The pipeline is driven by **profiles** (`-profile test|mac_local|hpc_slurm`) that select the executor and
-resources, composed with a **container engine** profile (`conda|docker|apptainer`). An interactive DAG of the
+The pipeline is driven by **profiles** (`-profile test|local|hpc_slurm`) that select the executor and
+resources, composed with a **packaging** profile (`conda|docker|apptainer` = how dependencies are provided).
+The comma composes them: an **execution** profile (`local` = this machine — any Linux/macOS, Windows via WSL2;
+`hpc_slurm` = a cluster) plus a packaging engine, e.g. `-profile local,conda`. `mac_local` is a deprecated
+alias for `local`. An interactive DAG of the
 run is also written to `results/<outdir>/pipeline_info/dag.html`, alongside `report.html`, `timeline.html`,
 and `trace.txt`.
 
@@ -119,6 +122,8 @@ and `trace.txt`.
 
 - **Nextflow** ≥ 23.10 (needs **Java 17+**). The repo also bundles a launcher at `./.tools/nextflow`.
 - **conda / mamba** (for the pinned environment) **or** Docker / Apptainer (for the container).
+- The **`captureforge` command**: `pip install -e .` from the repo root registers it on PATH (a thin front
+  door — `captureforge run/panel/index`). The raw forms still work; `captureforge` is recommended.
 
 CaptureForge supports two audiences: **(1) local users** on a personal laptop or workstation with no
 cluster, and **(2) a shared HPC** install used by many people. Both are covered below.
@@ -156,7 +161,7 @@ CONDA_SUBDIR=osx-64 mamba env create -f env/captureforge.yml
 
 ```bash
 docker build -t captureforge:0.1.0 -f env/Dockerfile .
-# then run with the docker engine profile, e.g.:  ./.tools/nextflow run main.nf -profile test,docker
+# then run with the docker engine profile, e.g.:  captureforge run -profile test,docker
 ```
 
 A laptop install is complete at this point: clone the repo, build the env (or image), and you can run the
@@ -254,7 +259,7 @@ GENE,1,1,0,1,,
 classes, ready for you to add `promoter/regulatory/cnv/str/anchor` intent per gene:
 
 ```bash
-python bin/init_gene_list.py my_genes.txt -o my_panel.spec.csv
+captureforge panel my_genes.txt -o my_panel.spec.csv
 # then edit my_panel.spec.csv and run with --input my_panel.spec.csv
 ```
 
@@ -324,7 +329,7 @@ list with `bin/init_gene_list.py` (it pre-fills the default classes; `coding` is
 `promoter` is on by default):
 
 ```bash
-python bin/init_gene_list.py tp53.txt -o tp53_panel.csv
+captureforge panel tp53.txt -o tp53_panel.csv
 ```
 
 That writes a CSV with the standard header and one row per gene, pre-filled:
@@ -363,7 +368,7 @@ You need a no-alt genome FASTA, a matching GTF, and a specificity index built fr
 
 ```bash
 bin/fetch_references.sh --outdir refs gtf
-bin/build_specificity_index.sh \
+captureforge index \
     --fasta refs/GRCh38.primary_assembly.fa \
     --aligner blast \
     --out $PWD/refs/grch38_noalt
@@ -372,7 +377,7 @@ bin/build_specificity_index.sh \
 ### Step 4 — run
 
 ```bash
-./.tools/nextflow run main.nf -profile mac_local \
+captureforge run -profile local \
     --input tp53_panel.csv \
     --genome_fasta refs/GRCh38.primary_assembly.fa \
     --gtf refs/Homo_sapiens.GRCh38.112.gtf.gz \
@@ -443,12 +448,12 @@ Build the index **from the no-alt design genome**:
 
 ```bash
 # BLAST (no index-build wait; used in the local human run)
-bin/build_specificity_index.sh \
+captureforge index \
     --fasta GRCh38.primary_assembly.fa \
     --aligner blast \
     --out $PWD/refs/grch38_noalt
 # bowtie2 (native, recommended on the HPC)
-bin/build_specificity_index.sh \
+captureforge index \
     --fasta GRCh38.primary_assembly.fa \
     --aligner bowtie2 \
     --out $PWD/refs/grch38_noalt_bt2
@@ -466,7 +471,7 @@ to the index prefix.
 | Profile | Executor / use | Compose with |
 |---|---|---|
 | `test` | tiny mini-genome fixture; runs on a laptop in ~2 min | `,conda` / `,docker` |
-| `mac_local` | full pipeline on one machine (local executor) | `,conda` / `,docker` |
+| `local` | full pipeline on one machine (any Linux/macOS; `mac_local` = deprecated alias) | `,conda` / `,docker` |
 | `hpc_slurm` | SLURM executor; big slots for the heavy specificity step | `,apptainer` |
 
 Container-engine profiles `conda`, `docker`, `apptainer` are composed, e.g. `-profile hpc_slurm,apptainer`.
@@ -506,26 +511,26 @@ Container-engine profiles `conda`, `docker`, `apptainer` are composed, e.g. `-pr
 
 # Running the pipeline
 
-The bundled launcher is `./.tools/nextflow`; if you installed Nextflow on `PATH`, use `nextflow`.
+**Recommended:** `captureforge run …` (and `captureforge panel` / `captureforge index`) after `pip install -e .`. The developer raw form still works from a clone — the repo bundles a launcher, so `./.tools/nextflow run main.nf -profile local,conda …` runs the pipeline directly (or system `nextflow` if installed). `captureforge run` prefers the bundled launcher and removes the boilerplate.
 
 ## Quickstart — the `test` profile (10 genes, ~2 min)
 
 ```bash
-conda activate captureforge && export PATH="$CONDA_PREFIX/bin:$PATH"   # Apple-Silicon PATH note
+conda activate captureforge   # arm64: env must be active (captureforge run warns otherwise)
 bash test/data/make_test_reference.sh        # build a tiny mini-genome fixture from your local GRCh38
-./.tools/nextflow run main.nf -profile test  # or: -profile test,conda
+captureforge run -profile test  # or: -profile test,conda
 bash test/check_outputs.sh                    # sanity-check; expects all 6 design classes
 ```
 
-## Full run — `mac_local`
+## Full run — `local`
 
 ```bash
-bin/build_specificity_index.sh \
+captureforge index \
     --fasta GRCh38.primary_assembly.fa \
     --aligner blast \
     --out $PWD/refs/grch38_noalt
-conda activate captureforge && export PATH="$CONDA_PREFIX/bin:$PATH"
-./.tools/nextflow run main.nf -profile mac_local -params-file params.full.yaml
+conda activate captureforge   # captureforge run warns if the env is not active
+captureforge run -profile local -params-file params.full.yaml
 ```
 
 ## Full run — `hpc_slurm` with Apptainer
@@ -563,7 +568,7 @@ default GC window).
 This is the panel already run; it uses MANE Select canonical transcripts and the full set of human tracks.
 
 ```bash
-./.tools/nextflow run main.nf -profile mac_local \
+captureforge run -profile local \
     --input my_panel.spec.csv \
     --genome_fasta refs/GRCh38.primary_assembly.fa \
     --gtf refs/Homo_sapiens.GRCh38.112.gtf.gz \
@@ -584,12 +589,12 @@ your own variant BED for anchors.
 
 ```bash
 # fetch GRCm39 primary assembly + GTF from Ensembl yourself, then:
-bin/build_specificity_index.sh \
+captureforge index \
     --fasta GRCm39.primary_assembly.fa \
     --aligner bowtie2 \
     --out $PWD/refs/grcm39_bt2
 
-./.tools/nextflow run main.nf -profile mac_local \
+captureforge run -profile local \
     --input mouse_panel.spec.csv \
     --genome_fasta refs/GRCm39.primary_assembly.fa \
     --gtf refs/Mus_musculus.GRCm39.112.gtf.gz \
@@ -616,12 +621,12 @@ bin/build_specificity_index.sh \
 
 ```bash
 # Gene models from PlasmoDB / Ensembl Protists; primary assembly (no alts):
-bin/build_specificity_index.sh \
+captureforge index \
     --fasta PlasmoDB-Pf3D7_Genome.fasta \
     --aligner bowtie2 \
     --out $PWD/refs/pf3d7_bt2
 
-./.tools/nextflow run main.nf -profile mac_local \
+captureforge run -profile local \
     --input pf_drug_resistance.spec.csv \
     --genome_fasta refs/PlasmoDB-Pf3D7_Genome.fasta \
     --gtf refs/PlasmoDB-Pf3D7.gtf \
