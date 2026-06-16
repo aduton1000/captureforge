@@ -1,208 +1,114 @@
 # CaptureForge
 
-**A general-purpose, disease- and organism-agnostic hybridization-capture probe (bait) design pipeline.**
+**A reproducible Nextflow pipeline for hybridization-capture probe (bait) design — from a list of target genes to a synthesis-ready, QC'd bait set.**
 
-CaptureForge turns a **gene list + per-gene design intent** into **order-ready biotinylated-bait
-oligo sequences** plus a full QC/design report. It is a reusable *method tool*: the first use is a
-multi-gene human study-susceptibility panel, but nothing about the structure or defaults is
-study-specific — point it at any gene list (any disease, any study) and, where feasible, any
-reference genome, by changing **inputs and config only, with no code edits**.
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![Nextflow](https://img.shields.io/badge/Nextflow-DSL2%20%E2%89%A523.10-23aa62.svg)
+![CLI: Python](https://img.shields.io/badge/CLI-Python-3776ab.svg)
 
-Everything upstream of physical oligo synthesis is in scope. Synthesis is outsourced, so the final
-deliverables are **order-ready sequence files** (`baits.fasta` / `baits.csv`), a QC dashboard, and a
-clean **`final_covered_targets.bed`** handoff for a downstream variant-analysis pipeline (separate task).
+## Overview
 
-> ⚠️ CaptureForge **designs** baits. It does not order, synthesize, or contact any vendor, and it does
-> not run downstream variant analysis.
+CaptureForge turns target genes and per-gene design intent into order-ready biotinylated-bait oligo sequences, a coverage BED, and a full QC report. It is disease- and organism-agnostic: point it at any gene list and a matching reference genome, and change inputs and config — never code. The scope is everything upstream of physical oligo synthesis; synthesis and wet-lab validation are out of scope.
 
----
+CaptureForge is the **design** half of a pair. Its `final_covered_targets.bed` handoff feeds **[CallForge](https://github.com/aduton1000/callforge)**, the downstream germline-analysis pipeline.
 
-## Pipeline at a glance
+## Features
 
-```
-gene list ─▶ [1] target definition ─▶ [2] masking ─▶ [3] candidate tiling ─▶
-[4] specificity ─▶ [5] composition ─▶ [6] gap re-tiling ─▶ [7] boost/dedup ─▶
-[8] synthesis scaffolding ─▶ [9] QC aggregation ─▶ [10] order package
-```
+- **End-to-end design** in ten Nextflow (DSL2) stages: target definition → masking → candidate tiling → specificity → composition → gap re-tiling → boost/dedup → synthesis scaffolding → QC aggregation → order package.
+- **Design-class-aware**: every target interval carries a class (`coding`, `promoter`, `regulatory`, `cnv`, `str`, `anchor`) that drives tiling density, masking, GC policy, and boosting.
+- **Specificity against the design genome**: mapping uses the no-alt primary assembly, enforced fail-loud so MHC and other alt-haplotype genes are not mistaken for off-target.
+- **Reproducible**: pinned conda environment or containers, `provenance.json` + checksums on every run; references are fetched and checksummed explicitly, never downloaded mid-run.
+- **Self-contained QC dashboard** plus per-gene coverage, GC/Tm, off-target, and copy-number figures.
+- **The `captureforge` CLI** — `run`, `panel`, `index` — over a single Nextflow entrypoint, composed by profiles for laptop or cluster.
 
-Each stage is a Nextflow (DSL2) module with QC outputs and explicit BED/FASTA artifacts. Every target
-interval carries a **design class** (`coding`, `promoter`, `regulatory`, `cnv`, `str`, `anchor`) that
-drives tiling density, masking policy, GC policy, and boosting.
+## Requirements
 
----
+- **Nextflow** ≥ 23.10 (Java 17+). The repository bundles a launcher at `./.tools/nextflow`, so installing Nextflow separately is optional.
+- **conda / mamba** for the pinned environment, **or** Docker / Apptainer for the container path.
+- **Platforms**: Linux and macOS (Windows via WSL2). On Apple Silicon, build the environment under Rosetta with `CONDA_SUBDIR=osx-64`; the container path avoids this.
 
-## Install
-
-**Yes — clone the repository first.** CaptureForge is the repo: the env file, `main.nf`, the `bin/` tools,
-and `env/` Dockerfile/def all live here, so every command below (and in *Quickstart*) is run **from the
-repository root**. You install and run it **entirely on a laptop or workstation — no HPC required** (a
-shared-cluster install is also supported; see `docs/manual` and `docs/hpc_deployment.md`).
+## Installation
 
 ```bash
-# 1. Clone the repository, then cd into it (all later commands run from here)
 git clone https://github.com/aduton1000/captureforge.git
 cd captureforge
 
-# 2. Nextflow (needs Java 17+) — or just use the bundled launcher at ./.tools/nextflow
-curl -s https://get.nextflow.io | bash && sudo mv nextflow /usr/local/bin/
+# pinned environment (creates the `captureforge` env)
+mamba env create -f env/captureforge.yml                       # Linux
+CONDA_SUBDIR=osx-64 mamba env create -f env/captureforge.yml   # macOS / Apple Silicon
 
-# 3. Pinned conda/mamba environment (creates the `captureforge` env)
-mamba env create -f env/captureforge.yml                         # Linux (native)
-CONDA_SUBDIR=osx-64 mamba env create -f env/captureforge.yml     # macOS Apple Silicon (Rosetta)
-
-# 4. register the `captureforge` command (thin CLI front door)
+# register the `captureforge` command
 pip install -e .
-
-# 5. (optional) containers instead of conda
-docker build -t captureforge:0.1.0 -f env/Dockerfile .           # Mac/Linux dev
-apptainer build captureforge.sif env/captureforge.def            # HPC
+captureforge --version
 ```
 
-A run composes **two** profiles: an **execution** profile (`local` = this machine — any Linux/macOS,
-Windows via WSL2; `hpc_slurm` = a cluster) and a **packaging** profile (`conda` / `docker` / `apptainer`
-= how dependencies are provided) — e.g. `-profile local,conda`. `local` is **not** Mac-specific
-(`mac_local` remains a deprecated alias). The `captureforge` CLI is additive — the raw forms
-(`./.tools/nextflow run main.nf …`, `python bin/init_gene_list.py …`) still work.
-
-You also need reference data (a no-alt genome FASTA + GTF, and a specificity index built from it) — see
-*Reference data* below and the *Quickstart*. The manual (`docs/manual`) walks through both a laptop install
-and a shared-HPC install in full.
+A run composes **two** profiles with a comma: an **execution** profile — `local` (this machine: any Linux/macOS, Windows via WSL2) or `hpc_slurm` (a SLURM cluster) — and a **packaging** profile — `conda`, `docker`, or `apptainer` — that selects how dependencies are provided. For example, `-profile local,conda` runs on this machine using the conda environment.
 
 ## Quickstart
 
-### ▶ Starting from **just a gene list** (recommended on-ramp for new panels)
-
-Prerequisite: you have *Install*ed (cloned the repo + built the env) and are in the repository root with the
-env active (`conda activate captureforge`). You have nothing but gene symbols, one per line, in `my_genes.txt`:
+Run the bundled 10-gene test panel end-to-end against a generated mini-genome fixture:
 
 ```bash
-# 1. Scaffold an editable design-spec CSV pre-filled with default design classes
+bash test/data/make_test_reference.sh    # build the mini-genome fixture
+captureforge run -profile test,conda
+bash test/check_outputs.sh               # sanity-check: expects all six design classes
+```
+
+This writes a complete design to `results/` — `baits.fasta` / `baits.csv`, `final_covered_targets.bed`, and `qc_dashboard.html` — in about two minutes. (The `test` profile uses a synthetic mini-genome fixture; it exercises the machinery, not real-panel quality.)
+
+## Usage
+
+The three subcommands cover the full workflow; each is additive over the underlying Nextflow pipeline.
+
+**Scaffold a panel spec** from a plain gene list into an editable CSV (`coding` is always implied; add `promoter`/`regulatory`/`cnv`/`str`/`anchor` intent per gene):
+
+```bash
 captureforge panel my_genes.txt -o my_panel.spec.csv
+```
 
-# 2. (optional) edit my_panel.spec.csv to add promoter / regulatory / cnv / str / anchor intent per gene
-#    (skip this to keep the defaults: coding exons + promoter)
+**Build the specificity index** once, from the no-alt primary assembly (the same genome the baits target):
 
-# 3. Build the specificity index FROM THE NO-ALT genome (one-time; required)
-captureforge index --fasta refs/GRCh38.noalt.fa --aligner blast --out $PWD/refs/grch38_noalt
+```bash
+captureforge index \
+    --fasta refs/GRCh38.noalt.fa \
+    --aligner blast \
+    --out $PWD/refs/grch38_noalt
+```
 
-# 4. Run the pipeline
+**Run the design** on a real panel:
+
+```bash
 captureforge run -profile local,conda \
     --input my_panel.spec.csv \
-    --genome_fasta refs/GRCh38.noalt.fa --gtf refs/GRCh38.112.gtf.gz \
+    --genome_fasta refs/GRCh38.noalt.fa \
+    --gtf refs/GRCh38.112.gtf.gz \
     --specificity_db $PWD/refs/grch38_noalt \
     --outdir results
 ```
 
-(Raw forms still work: `python bin/init_gene_list.py …`, `bin/build_specificity_index.sh …`,
-`./.tools/nextflow run main.nf …`.)
+`--specificity_db` must be an absolute path to the index prefix, built from the no-alt primary assembly; the pipeline fails loud on a with-alt or toplevel index. For a SLURM cluster, switch to `-profile hpc_slurm,apptainer` — see the manual.
 
-A bare `my_genes.txt` works directly too (applies the default `coding + promoter` classes):
-`--input my_genes.txt`.
+## Inputs and outputs
 
-> **Specificity reference must be the NO-ALT primary assembly == the design genome.** The pipeline
-> *enforces* this (fails loudly on alt/decoy/HLA contigs) — a with-alt/toplevel index makes MHC-region
-> genes (e.g. GENE) look non-specific against their own alt haplotypes. `--specificity_db` must be an
-> **absolute** path to the index prefix (it is referenced in place, not staged).
+**Inputs.** A panel definition — a plain gene list, a CSV/TSV spec (`gene` + optional `promoter,regulatory,cnv,str,extra_regions,anchors`), or a curated Excel workbook — plus a no-alt reference FASTA, a GTF, and a specificity index built from that FASTA. References are managed by `bin/fetch_references.sh` (fetch + checksum + provenance), never fetched mid-run. Required parameters: `--input`, `--genome_fasta`, `--gtf`.
 
-### ▶ Test profile (10 genes, runs on a Mac in ~2 min)
+**Outputs (`results/`).** `baits.fasta` and `baits.csv` (order-ready sequences + metadata); `final_covered_targets.bed` (the handoff to CallForge); `qc_dashboard.html` (self-contained QC report); `metrics.json` and per-stage TSVs; `MANIFEST` + `provenance.json` (checksums, tool/reference/parameter provenance).
 
-```bash
-bash test/data/make_test_reference.sh        # build a tiny mini-genome fixture from your local GRCh38
-captureforge run -profile test,conda         # or: -profile test (see Apple-Silicon note below)
-bash test/check_outputs.sh                    # sanity-checks; expects all 6 design classes
-```
+## Documentation
 
-**Apple Silicon (arm64) note:** the pinned env builds under Rosetta (osx-64). With `-profile test,conda`
-Nextflow manages the env. For a local run without a container engine, the `captureforge` env must be
-active so the env's tools are on PATH — `captureforge run` **warns if it isn't** (then just
-`conda activate captureforge`). The container path (`-profile test,docker`) avoids this entirely.
+The full user manual covers concepts, laptop and shared-HPC installs, the start-from-a-gene-name tutorial, running on other organisms, QC interpretation, and troubleshooting:
 
-### ▶ Full panel on the HPC (SLURM + Apptainer)
+- **Manual**: [`docs/manual/captureforge_manual.md`](docs/manual/captureforge_manual.md) · [PDF](docs/manual/captureforge_manual.pdf)
+- **HPC deployment**: [`docs/hpc_deployment.md`](docs/hpc_deployment.md)
+- **Design rationale**: [`docs/design_decisions.md`](docs/design_decisions.md)
+- **Worked example**: a multi-gene human study-susceptibility panel ([`docs/DESIGN_REPORT.md`](docs/DESIGN_REPORT.md), [`docs/qc_dashboard.html`](docs/qc_dashboard.html)). The curated source workbook is not distributed; the example is reproducible from the input on-ramps and tracked outputs. Nothing in the pipeline is study-specific.
 
-See **`docs/hpc_deployment.md`** for the full central-install recipe. Short form:
+## CaptureForge and CallForge
 
-```bash
-module load captureforge/0.1.0           # or: nextflow run /shared/apps/captureforge/main.nf
-captureforge-run -params-file my_panel.params.yaml \
-    --genome_fasta   $CF_REFS/GRCh38.primary_assembly.fa \
-    --gtf            $CF_REFS/GRCh38.112.gtf.gz \
-    --specificity_db $CF_REFS/grch38_noalt_bt2 --specificity_aligner bowtie2 \
-    --slurm_partition <queue>
-```
+CaptureForge (design) and **[CallForge](https://github.com/aduton1000/callforge)** (analysis) are a pair: CaptureForge defines, tiles, and QCs the capture baits and emits `final_covered_targets.bed` plus per-gene metadata; CallForge consumes that handoff to align, call, annotate, and run cohort QC and rare-variant burden testing. Each runs independently.
 
----
+## Citation, license, and issues
 
-## Input on-ramps
-
-CaptureForge auto-detects and validates any **one** of these (schema: `assets/gene_list_schema.md`):
-
-| Input | Format | Use |
-|---|---|---|
-| **Plain text** | one gene symbol per line | zero-friction; applies default classes |
-| **CSV/TSV spec** | header `gene` + optional `promoter,regulatory,cnv,str,extra_regions,anchors` | clean reusable format |
-| **Excel workbook** | curated columns (`Gene`, `Variant class`, `Key variants to capture`, `Locus`, `Burden group`) | rich curated panels |
-
-The logic that turns genes into labelled target regions is **Stage 1 of the pipeline itself** — no prior
-project file or script is ever required.
-
----
-
-## Reference data
-
-All reference paths are params (default GRCh38, overridable for any build/organism). Heavy downloads are
-**never run automatically**: `bin/fetch_references.sh` fetches and checksums each reference and writes a
-provenance file. See `docs/design_decisions.md` for exactly which releases are used.
-
----
-
-## Outputs (`results/`)
-
-| Artifact | What |
-|---|---|
-| `baits.fasta`, `baits.csv` | order-ready bait sequences + metadata |
-| `final_covered_targets.bed` | **handoff** target file for the downstream analysis pipeline |
-| `qc_dashboard.html` | self-contained visual QC report |
-| `figures/*.png,*.svg` | per-gene coverage tracks, GC/Tm/off-target/copy-number plots |
-| `metrics.json`, `*.tsv` | machine-readable QC metrics |
-| `MANIFEST`, `provenance.json` | md5 checksums + tool/reference/param provenance |
-
----
-
-## What's in this repository
-
-This repo is a complete, runnable Nextflow pipeline plus its documentation and a fully worked example.
-
-| Path | Contents |
-|---|---|
-| `main.nf`, `subworkflows/` | Pipeline entrypoint and the DSL2 subworkflow that wires the 14 processes |
-| `modules/` | One Nextflow module per stage (target definition → masking → tiling → specificity → composition → re-tiling → boost/dedup → synthesis → QC → export) plus the visualization modules |
-| `bin/` | The stage tools and helpers (Python/Bash): `parse_gene_list.py`, `init_gene_list.py`, `define_targets.py`, `apply_masking.py`, `tile_candidates.py`, `specificity_filter.py`, `composition_filter.py`, `gap_retile.py`, `boost_dedup.py`, `scaffold_synthesis.py`, `aggregate_qc.py`, `export_package.py`; references: `fetch_references.sh`, `build_specificity_index.sh`, `resolve_rsids.py`; visualization: `make_figures.py`, `make_dag.py`, `make_dashboard.py`; docs: `build_manual.sh`; test fixture: `make_test_reference.py` |
-| `nextflow.config`, `conf/` | All parameters and the three profiles (`test`, `local` [`mac_local` = deprecated alias], `hpc_slurm`) + container engines (`conda`/`docker`/`apptainer`) |
-| `params.example.yaml`, `params.full.yaml` | Example and full-run parameter files |
-| `env/` | Pinned conda environment (`captureforge.yml`) + `Dockerfile` + Apptainer `.def` |
-| `assets/` | Input schema (`gene_list_schema.md`), small example gene lists, and synthesizer-template notes |
-| `test/` | A tiny mini-genome fixture and sanity check for the `test` profile (runs in ~2 min) |
-| `share/` | Lmod modulefile + the `captureforge-run` wrapper for a shared HPC install |
-| `docs/` | **The documentation and worked example** (see below) |
-
-### Documentation & worked example (`docs/`)
-
-- **`manual/captureforge_manual.{md,pdf,docx}`** — the full user manual (concepts, install for laptop *and*
-  HPC, the "start from a gene name" tutorial, running on different organisms, interpreting QC, troubleshooting).
-- **`DESIGN_REPORT.md`** — the design & QC report for the worked example run.
-- **`qc_dashboard.html`** — the self-contained QC dashboard from that run (open it in a browser; all figures
-  are embedded).
-- **`design_decisions.md`** — a running log of every default and its rationale.
-- **`hpc_deployment.md`** — the full shared-cluster install/deploy recipe.
-- **`manual/figures/`** — the figures used in the manual (per-gene coverage tracks, GC/Tm, specificity,
-  pipeline DAG, bait-construct schematic, …).
-
-**The worked example** throughout `docs/` is a **multi-gene human study-susceptibility panel** (N unique
-baits, ~NN.N% mappable coverage, 12k oligo-pool tier). The curated source workbook is **not** distributed
-(it may contain unpublished panel data); the example is fully reproducible from the on-ramps and tracked
-outputs. Nothing about the pipeline is study-specific — it is the disease/organism-agnostic example used
-to exercise every design class.
-
-## License
-
-MIT (placeholder — see `LICENSE`).
+- **Cite**: see [`CITATION.cff`](CITATION.cff).
+- **License**: MIT — see [`LICENSE`](LICENSE).
+- **Issues / contributions**: open an issue or pull request on the [GitHub repository](https://github.com/aduton1000/captureforge).
