@@ -17,9 +17,9 @@ One gene symbol per line. Blank lines and `#` comments ignored. Applies the **de
 list of genes*.
 
 ```
-GENE
-GENE
-GENE
+TP53
+EGFR
+PTEN
 ```
 
 ## On-ramp 2 — CSV/TSV spec  (`.csv`, `.tsv`)
@@ -75,13 +75,13 @@ Tab-separated, one row per gene; everything downstream consumes only this file:
 
 | column | example |
 |---|---|
-| `gene` | `GENE` |
+| `gene` | `TP53` |
 | `ensembl_id` | `ENSG00000141510` |
-| `chrom` | `1` |
+| `chrom` | `17` |
 | `strand` | `-` |
 | `gene_start` | `7668421` |
 | `gene_end` | `7687550` |
 | `design_classes` | `coding|promoter|regulatory` |
-| `anchors` | `rs1042522,rs1042522` |
-| `extra_regions` | `1:203650000-203651000` |
+| `anchors` | `rs1042522` |
+| `extra_regions` | `17:7670000-7671000` |
 | `burden_group` | `single` |
