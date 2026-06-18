@@ -13,8 +13,8 @@ from jinja2 import Template
 # Plain-language one-liner per figure (kept in sync with bin/make_figures.py).
 CAPTIONS = {
     "pipeline_dag": "The 10-stage CaptureForge flow, colored by phase: target definition → selection → assembly → QC & export.",
-    "coverage_by_class": "Mappable coverage ≥96% for coding/promoter/str; CNV lower (~78%) because repeat-rich loci are largely unmappable.",
-    "coverage_by_gene": "Per-gene raw coverage; GENE/GENE lowest (CNV segdup/LCR). Red <80%, orange <95%, green ≥95%.",
+    "coverage_by_class": "Green = mappable coverage (over tileable sequence), blue = raw coverage (over the nominal target). The green–blue gap is masked/uncapturable sequence; CNV classes are typically lower because repeat-rich loci are largely unmappable.",
+    "coverage_by_gene": "Per-gene raw coverage, sorted. Red <80%, orange <95%, green ≥95%. The lowest genes are typically paralog-limited or CNV segdup/LCR loci — confirm the reason on the track plots.",
     "baits_per_gene_by_class": "Per-gene bait composition by design class (multi-class baits attributed to their primary class).",
     "gc_hist": "GC of spec-pass candidate baits — one row per tiled position, copies NOT multiplied in. Spikes are expected from dense tiling; what matters is the bulk inside the 25–70% window.",
     "tm_hist": "Tm of passing candidate baits (per position, not copies); the population sits within the 60–90 °C capture window.",
@@ -22,7 +22,7 @@ CAPTIONS = {
     "copynumber_hist": "Most baits appear once; promoter/regulatory/anchor baits are boosted ×2–4 to even out capture.",
     "per_class_summary": "Final unique baits per design class (coding dominates; cnv/str from whole-locus tiling).",
     "convergence": "Re-tiling plateaus below the 95% target — correct, because residual gaps are non-specific/repeat.",
-    "cost_pool_tier": "Unique baits sit under the 12k oligo-pool tier (synthesis-pool cost only).",
+    "cost_pool_tier": "Unique bait count against the configured oligo-pool size tiers; the bar must sit under a tier line (synthesis-pool cost only). Crossing a line is flagged rather than silently using the next tier.",
     "bait_construct": "What the synthesized oligo looks like for each format (segments scaled by nt). ivt_rna = 5′ handle + T7 + bait + 3′ handle; dna_pool / ready_to_use = bait core only. The configured format is marked.",
     "coverage_tracks": "Lanes: target (raw) / exons (coding exons ±15 bp) / tileable (post-mask) / baits (final). A baits gap where tileable is also empty = masked/uncapturable (expected); a gap where tileable is present = a real gap. The exon lane shows whether any exon is missed.",
 }

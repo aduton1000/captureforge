@@ -1,6 +1,6 @@
 # CaptureForge example: bare gene symbols, one per line
-GENE
-GENE
-GENE (GENE)
-GENE
-GENE
+TP53
+EGFR
+ERBB2 (HER2)
+BRCA1
+PTEN

@@ -1,5 +1,5 @@
 gene,promoter,regulatory,cnv,str,extra_regions,anchors
-GENE,1,0,0,0,,
-GENE,0,0,1,0,,
-GENE,1,1,0,0,,rs1042522
-GENE,1,1,0,1,,
+TP53,1,0,0,0,,
+EGFR,0,0,1,0,,
+BRCA1,1,1,0,0,,rs1799966
+PTEN,1,1,0,1,,

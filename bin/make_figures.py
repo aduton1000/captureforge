@@ -26,15 +26,15 @@ plt.rcParams.update({"figure.dpi": 110, "font.size": 9, "axes.grid": True,
 # One-line, plain-language interpretation baked into every figure (and reused by
 # the dashboard/report/manual). Keyed by figure base name (page suffix stripped).
 CAPTIONS = {
-    "coverage_by_class": "Mappable coverage ≥96% for coding/promoter/str; CNV lower (~78%) because repeat-rich loci are largely unmappable.",
-    "coverage_by_gene": "Per-gene raw coverage; GENE/GENE lowest (CNV segdup/LCR). Red <80%, orange <95%, green ≥95%.",
+    "coverage_by_class": "Green = mappable coverage (over tileable sequence), blue = raw coverage (over the nominal target). The green–blue gap is masked/uncapturable sequence; CNV classes are typically lower because repeat-rich loci are largely unmappable.",
+    "coverage_by_gene": "Per-gene raw coverage, sorted. Red <80%, orange <95%, green ≥95%. The lowest genes are typically paralog-limited or CNV segdup/LCR loci — confirm the reason on the track plots.",
     "gc_hist": "GC of spec-pass candidate baits (one row per tiled position — copies are NOT multiplied in). Spikes are expected from dense tiling of homogeneous regions; what matters is the bulk sitting in the 25–70% window.",
     "tm_hist": "Tm of passing candidate baits (per tiled position, not copies). The population sits within the 60–90 °C capture window.",
     "offtarget_hist": "Most baits are unique (0 off-targets); the long repeat tail (binned) is rejected. Binned x-axis for readability.",
     "copynumber_hist": "Most baits appear once; promoter/regulatory/anchor baits are boosted to ×2–4 to even out capture.",
     "convergence": "Re-tiling plateaus below the 95% target — correct, because the residual gaps are non-specific/repeat sequence.",
     "per_class_summary": "Final unique baits per design class (coding dominates; cnv/str come from whole-locus tiling).",
-    "cost_pool_tier": "Unique baits sit under the 12k oligo-pool tier (synthesis-pool cost only, not assay cost).",
+    "cost_pool_tier": "Unique bait count against the configured oligo-pool size tiers; the bar must sit under a tier line (synthesis-pool cost only, not assay cost). Crossing a line is flagged rather than silently using the next tier.",
     "baits_per_gene_by_class": "Per-gene bait composition by design class (multi-class baits attributed to their primary class).",
     "coverage_tracks": "Lanes: target (raw, class-colored) / exons (coding exons ±15 bp splice flank) / tileable (post-mask) / baits (final). A baits gap where tileable is ALSO empty = masked/uncapturable (expected); a gap where tileable is present = a real gap. Use the exon lane to check no exon is missed.",
     "bait_construct": "Bait-construct layout per synthesis format (segments scaled by length in nt). For ivt_rna the bait is flanked by universal PCR handles and a T7 promoter for in-vitro transcription to biotinylated RNA; dna_pool / ready_to_use are the bait core only.",

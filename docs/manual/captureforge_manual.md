@@ -12,9 +12,8 @@ date: "13 June 2026"
 
 **CaptureForge** turns a **gene list plus per-gene design intent** into **order-ready biotinylated-bait
 oligo sequences** and a full QC/design report. It is a reusable, **disease- and organism-agnostic** method
-tool: the first use was a multi-gene human study-susceptibility panel, but nothing in its structure or
-defaults is study-specific — point it at any gene list (any disease, any study) and, where feasible, any
-reference genome, by changing **inputs and configuration only**, with no code edits.
+tool: point it at any gene list (any disease, any study) and, where feasible, any reference genome, by
+changing **inputs and configuration only**, with no code edits.
 
 Everything upstream of physical oligo synthesis is in scope. Synthesis is outsourced, so the final
 deliverables are **order-ready sequence files**, a self-contained QC dashboard, and a clean
@@ -48,7 +47,7 @@ explains the genomics concepts where they matter for decisions.
 
 A **bait** (or **probe**) is a short, single-stranded, biotinylated oligonucleotide — in CaptureForge,
 **120 nt** by default — whose sequence is complementary to a region you want to sequence. A **panel** is
-simply the **set of baits** that together tile all your targets.
+the **set of baits** that together tile all your targets.
 
 ## How hybridization capture works
 
@@ -107,8 +106,7 @@ under `results/<outdir>/stageN_*/`, and emits a `stageN_summary.json` of metrics
 The pipeline is driven by **profiles** (`-profile test|local|hpc_slurm`) that select the executor and
 resources, composed with a **packaging** profile (`conda|docker|apptainer` = how dependencies are provided).
 The comma composes them: an **execution** profile (`local` = this machine — any Linux/macOS, Windows via WSL2;
-`hpc_slurm` = a cluster) plus a packaging engine, e.g. `-profile local,conda`. `mac_local` is a deprecated
-alias for `local`. An interactive DAG of the
+`hpc_slurm` = a cluster) plus a packaging engine, e.g. `-profile local,conda`. An interactive DAG of the
 run is also written to `results/<outdir>/pipeline_info/dag.html`, alongside `report.html`, `timeline.html`,
 and `trace.txt`.
 
@@ -132,7 +130,7 @@ cluster, and **(2) a shared HPC** install used by many people. Both are covered 
 
 You can install and run CaptureForge **entirely on a personal computer**. The `test` profile and small
 panels run comfortably on a laptop; a full whole-genome–specificity run is heavier but still completes on a
-workstation (it just takes longer — see *Running the pipeline*). No cluster, scheduler, or admin rights are
+workstation (it takes longer — see *Running the pipeline*). No cluster, scheduler, or admin rights are
 needed.
 
 ### Option A — conda / mamba environment
@@ -226,9 +224,9 @@ One gene symbol per line. Blank lines and `#` comments are ignored. Applies the 
 
 ```text
 # my_genes.txt
-GENE
-GENE
-GENE
+TP53
+EGFR
+PTEN
 ```
 
 ## On-ramp 2 — CSV/TSV spec (the reusable format)
@@ -247,10 +245,10 @@ Header **`gene`** is required; all others optional. Boolean-ish columns accept `
 
 ```csv
 gene,promoter,regulatory,cnv,str,extra_regions,anchors
-GENE,1,0,0,0,,
-GENE,0,0,1,0,,
-GENE,1,1,0,0,,rs1042522
-GENE,1,1,0,1,,
+TP53,1,0,0,0,,
+EGFR,0,0,1,0,,
+BRCA1,1,1,0,0,,rs1799966
+PTEN,1,1,0,1,,
 ```
 
 ### Scaffolding a spec from bare symbols
@@ -283,11 +281,11 @@ The mapping is case-insensitive substring matching (`coding` is always added):
 ### Aliases and anchors
 
 Symbols written `A (B)` are resolved to whichever of `A`/`B` is a valid current symbol in the GTF
-(`GENE (GENE)`→`GENE`, `GENE (GENE)`→`GENE`). Unresolvable symbols cause a **loud failure** with the
+(`ERBB2 (HER2)`→`ERBB2`, `TP53 (p53)`→`TP53`). Unresolvable symbols cause a **loud failure** with the
 offending list. `rs\d+` tokens in `Key variants to capture` / `anchors` are extracted as anchor targets
 (resolved to coordinates via a dbSNP VCF or a `--rsid_bed`; see *Reference data*).
 
-## Worked tutorial — starting from just a gene name (p53 → TP53)
+## Worked tutorial — starting from a gene name (p53 → TP53)
 
 Suppose all you have is a gene you care about: **p53**. This walkthrough takes you from that name to an
 order package, and shows where each on-ramp fits.
@@ -305,7 +303,6 @@ Other nickname/alias traps that bite people:
 |---|---|---|
 | `p53` | `TP53` | protein name ≠ gene symbol |
 | `HER2` / `Neu` | `ERBB2` | receptor nickname |
-| `DC-SIGN` | `GENE` | protein nickname |
 | `PD-1` | `PDCD1` | protein nickname |
 
 If you are unsure, look the gene up on genenames.org (HGNC) or Ensembl and use the **approved symbol**.
@@ -401,7 +398,7 @@ per-gene track for TP53 with its exon lane, the GC/Tm windows, and the bait-cons
 
 ### Honest caveat — one small gene is not a pool
 
-TP53 is ~25 kb with ~11 coding exons; on its own it yields only a **few hundred baits** — far below
+TP53 is ~25 kb with ~11 coding exons; on its own it yields only **several hundred baits** — far below
 oligo-pool synthesis minimums (the smallest tier in `pool_tiers` is **12,000**). So "start from a gene
 name" is really how you **add a gene to a larger panel**: capture economics only work when **tens to
 hundreds of genes share one pool**. Build your CSV spec up to the full gene set, then run once — the
@@ -421,7 +418,7 @@ but are not required.
 **GRCh38/human-specific** (Ensembl `homo_sapiens` + UCSC hg38). Heavy downloads never run automatically.
 
 ```bash
-bin/fetch_references.sh --outdir refs gtf                 # just the Ensembl r112 GTF (~50 MB)
+bin/fetch_references.sh --outdir refs gtf                 # only the Ensembl r112 GTF (~50 MB)
 bin/fetch_references.sh --outdir refs rmsk simplerepeat   # STR/repeat masks
 bin/fetch_references.sh --outdir refs all                 # everything (heavy!)
 ```
@@ -435,19 +432,19 @@ and pass them with `--genome_fasta` / `--gtf` (see *Running on different organis
 > reference as the design genome.**
 
 If you index a *toplevel / with-alt* reference, genes in the MHC and other alt-haplotype regions will look
-non-specific against **their own alternate-haplotype copies** — a real example from the human panel: complement
-factor B (`GENE`) initially appeared 100% non-specific because its "off-targets" were its own copies on six
-`HSCHR6_MHC_*` scaffolds. CaptureForge **enforces** this: Stage 4 (`specificity_filter.py`) fails loudly
-(exit 3) if the specificity reference contains alt/decoy/HLA contigs (`HSCHR*`, `*_MHC_*`, `HLA-*`, `*_alt`,
-`*_decoy`, `hs38d1`, `EBV`) and cross-checks that the db contigs are a subset of the design genome. The check
-fired on the production run: *"reference invariant OK: 194 contigs, no alt/decoy/HLA."*
+non-specific against **their own alternate-haplotype copies** — for example, an MHC-region gene can appear
+100% non-specific when its "off-targets" are its own copies on `HSCHR6_MHC_*` scaffolds. CaptureForge
+**enforces** the no-alt rule: Stage 4 (`specificity_filter.py`) fails loudly (exit 3) if the specificity
+reference contains alt/decoy/HLA contigs (`HSCHR*`, `*_MHC_*`, `HLA-*`, `*_alt`, `*_decoy`, `hs38d1`, `EBV`)
+and cross-checks that the db contigs are a subset of the design genome. On a clean primary assembly the check
+reports the contig count and passes (e.g. *"reference invariant OK: no alt/decoy/HLA"*).
 
 ## Building the specificity index
 
 Build the index **from the no-alt design genome**:
 
 ```bash
-# BLAST (no index-build wait; used in the local human run)
+# BLAST (no index-build wait; convenient for local runs)
 captureforge index \
     --fasta GRCh38.primary_assembly.fa \
     --aligner blast \
@@ -471,7 +468,7 @@ to the index prefix.
 | Profile | Executor / use | Compose with |
 |---|---|---|
 | `test` | tiny mini-genome fixture; runs on a laptop in ~2 min | `,conda` / `,docker` |
-| `local` | full pipeline on one machine (any Linux/macOS; `mac_local` = deprecated alias) | `,conda` / `,docker` |
+| `local` | full pipeline on one machine (any Linux/macOS) | `,conda` / `,docker` |
 | `hpc_slurm` | SLURM executor; big slots for the heavy specificity step | `,apptainer` |
 
 Container-engine profiles `conda`, `docker`, `apptainer` are composed, e.g. `-profile hpc_slurm,apptainer`.
@@ -565,7 +562,7 @@ default GC window).
 
 ## Human (GRCh38) — the baseline
 
-This is the panel already run; it uses MANE Select canonical transcripts and the full set of human tracks.
+The human baseline uses MANE Select canonical transcripts and the full set of human tracks.
 
 ```bash
 captureforge run -profile local \
@@ -638,14 +635,14 @@ captureforge run -profile local \
     --tm_min 50 --tm_max 85
 ```
 
-This ties directly to the facility's study work: a *P. falciparum* drug-resistance panel (e.g. *pfcrt*,
-*pfmdr1*, *dhfr*, *dhps*, *kelch13*) is designed exactly this way — coding classes for the resistance genes,
-the widened GC/Tm windows above, and a specificity index built from the Pf3D7 primary assembly.
+A *P. falciparum* drug-resistance panel (e.g. *pfcrt*, *pfmdr1*, *dhfr*, *dhps*, *kelch13*) is designed
+exactly this way — coding classes for the resistance genes, the widened GC/Tm windows above, and a
+specificity index built from the Pf3D7 primary assembly.
 
 **Caveats:** no regulatory build and no dbSNP — `regulatory` flags produce nothing (but **promoter windows
 still work**, since they come from the GTF TSS), and anchors require a user-supplied BED. No UCSC repeat
 tracks — masking is **dustmasker-only** (which is actually well-suited to the AT-rich, low-complexity-rich Pf
-genome). The no-alt invariant still applies: Pf has no alt haplotypes, so the check simply passes.
+genome). The no-alt invariant still applies: Pf has no alt haplotypes, so the check passes.
 
 ## "Any organism" checklist
 
@@ -721,48 +718,44 @@ CaptureForge reports coverage two ways:
   actually bait.
 - **raw coverage** = covered ÷ **raw** target — the honest end-to-end number over the *nominal* footprint.
 
-On the multi-gene human panel the overall figures are **~NN.N% mappable** but **~NN.N% raw**. **This is by
-design.** The gap is sequence intentionally removed by masking — repeats, segmental duplications, STR cores,
-Alu elements — which is **genomically uncapturable** by hybridization. A high mappable number with a lower
-raw number is the *expected, honest* result, not a failure.
+A typical panel shows a **high mappable** number (often above 90%) and a **lower raw** number — for
+illustration, mappable ≈ 90% against raw ≈ 67%. **This is by design.** The gap is sequence intentionally
+removed by masking — repeats, segmental duplications, STR cores, Alu elements — which is **genomically
+uncapturable** by hybridization. A high mappable number with a lower raw number is the *expected, honest*
+result, not a failure.
 
-![Coverage by design class. Green = mappable coverage (over tileable sequence), blue = raw coverage (over the nominal target). Read the green bars for design efficiency; the green–blue gap is masked/uncapturable sequence. `coding/promoter/str` are ≥96% mappable; `cnv` is lower (78%) because repeat-rich loci are partly masked and partly non-specific.](figures/coverage_by_class.png){width=85%}
+![Coverage by design class. Green = mappable coverage (over tileable sequence), blue = raw coverage (over the nominal target). Read the green bars for design efficiency; the green–blue gap is masked/uncapturable sequence. `coding/promoter/str` classes are typically high mappable; `cnv` is usually lower because repeat-rich loci are partly masked and partly non-specific.](figures/coverage_by_class.png){width=85%}
 
-![Per-gene raw coverage, sorted. Green ≥95%, orange <95%, red <80%. The red/orange genes are not "broken" — they are the paralog-limited and CNV/segdup loci discussed below (GENE, GENE lowest). Use this to spot which genes need a second look, then confirm the reason on the track plots.](figures/coverage_by_gene.png){width=70%}
+![Per-gene raw coverage, sorted. Green ≥95%, orange <95%, red <80%. The red/orange genes are not "broken" — they are typically the paralog-limited and CNV/segdup loci discussed below. Use this to spot which genes need a second look, then confirm the reason on the track plots.](figures/coverage_by_gene.png){width=70%}
 
 To see *how* each gene's baits are composed by design class, the per-gene-by-class view stacks bait counts
 per gene (counts from `baits.csv`, multi-class baits attributed to their primary class so the bars sum to
-the unique-bait count). It makes the design intent obvious at a glance — GENE is dominated by `str`
-(its unique flanks), GENE/GENE/GENE by `cnv` (whole-locus tiling), and most other genes are `coding`+`promoter`.
-The full gene × class matrix is in *Appendix A* (and `figures/baits_per_gene_by_class.tsv`).
-
-![Baits per gene by design class (page 1 of 2; genes sorted by total bait count). Stacked segments are the design classes; the bar length is that gene's bait count. GENE (str), GENE/GENE/GENE (cnv) lead.](figures/baits_per_gene_by_class_page1.png){width=72%}
-
-![Baits per gene by design class (page 2 of 2): the smaller-count genes, mostly coding ± promoter.](figures/baits_per_gene_by_class_page2.png){width=72%}
+the unique-bait count). It makes the design intent obvious at a glance: a gene flagged `str` is dominated by
+its unique-flank baits, a `cnv` gene by whole-locus tiling, and a plain coding gene by `coding`+`promoter`.
+The full gene × class matrix is written to `figures/baits_per_gene_by_class.tsv`.
 
 ## The three-tier per-gene honesty
 
 Not all "incomplete" coverage means the same thing. Genes fall into three tiers:
 
-1. **Cleanly covered** — unique sequence, high mappable coverage (most of the panel).
+1. **Cleanly covered** — unique sequence, high mappable coverage (most of a panel).
 2. **Paralog-limited coding** — only the *uniquely-baitable fraction* is covered; the rest is too similar to a
-   paralog to bait specifically. Real panel examples: **GENE** (paralog GENE), **GENE** (GENE/5 cluster),
-   **GENE** (GENE + internal repeats), **GENE** (GENE), **GENE** (GENE–5). The 691 baits that retain one tolerated
-   paralog hit are tagged `off_target_flag=1` in `baits.csv`.
+   paralog to bait specifically (a gene in a multi-copy family, or with a near-identical paralog elsewhere in
+   the genome). Baits that retain one tolerated paralog hit are tagged `off_target_flag=1` in `baits.csv`.
 3. **CNV breakpoint-blind** — for CNV genes, depth bins are evenly spaced *except* across segmental-dup / LCR
-   regions, which are exactly where the structural variation often occurs. Real examples: **GENE** (max bin gap
-   18.5 kb) and **GENE** (max gap 6.6 kb).
+   regions, which are exactly where the structural variation often occurs, leaving multi-kb gaps across those
+   blocks.
 
-> **GENE and GENE are in BOTH tier 2 and tier 3** — they are the loci most likely to need an **orthogonal
-> assay** (MLPA / long-read) if they are central to your study.
+> A gene that is **both** paralog-limited **and** breakpoint-blind is the kind most likely to need an
+> **orthogonal assay** (MLPA / long-read) if it is central to your study.
 
 ## CNV read-depth callability is the decision metric — not raw CNV coverage
 
 For a CNV gene, the question is not "what % of the locus is baited" but "are the baited bins **evenly spaced
 enough** to call copy number from read depth?" CaptureForge reports per-CNV-gene bin spacing (`metrics.json →
-cnv_bin_spacing`): number of bins, median and **max inter-bin gap**, and a `depth_callable` flag. On the
-panel, **GENE** and **GENE** are depth-callable (small max gaps); **GENE** and **GENE** are not (multi-kb blind
-spots at their LCRs). A gene can have hundreds of bins and still be breakpoint-blind.
+cnv_bin_spacing`): number of bins, median and **max inter-bin gap**, and a `depth_callable` flag. A CNV gene
+in clean, unique sequence is depth-callable (small max gaps); one whose locus is broken up by LCRs is not
+(multi-kb blind spots). A gene can have hundreds of bins and still be breakpoint-blind.
 
 ## Reading a per-gene track plot — real vs uncapturable gaps
 
@@ -778,9 +771,9 @@ Each panel now has **four lanes** — `target` (raw, class-colored), `exons` (th
 flank, in green, right under the target so you can check no exon is missed), `tileable` (post-mask), and
 `baits` (final) — and the gene label includes the **exon count** alongside the chromosome location.
 
-![A clean page (genes GENE, GENE, GENE, GENE): the `baits` lane closely tracks the `target`, `exons`, and `tileable` lanes — every exon is well covered with only small, expected gaps. (4 genes/page, spaced so coordinate ticks never collide with the next gene's title; the label shows the exon count.)](figures/coverage_tracks_page1.png){width=92%}
+![A clean page: the `baits` lane closely tracks the `target`, `exons`, and `tileable` lanes — every exon is well covered with only small, expected gaps. (Genes are laid out a few per page, spaced so coordinate ticks never collide with the next gene's title; the label shows the exon count.)](figures/coverage_tracks_page1.png){width=92%}
 
-![A hard page including GENE (red `cnv` lane, 22 exons): the `target` lane is the whole CNV locus, the green `exons` lane shows where the coding exons actually sit, and the `baits` lane is sparse in the middle where GENE's segmental-dup / LCR blocks are unmappable. The exon lane lets you confirm which exons are still covered despite the breakpoint-blind regions. GENE looks the same on its own page.](figures/coverage_tracks_page4.png){width=92%}
+![A second page of per-gene tracks. Where a gene carries a `cnv` or `str` class, the `target` lane spans the whole locus while the green `exons` lane shows where the coding exons sit; on a real run the `baits` lane thins out across any segmental-dup / LCR blocks that are unmappable. The exon lane lets you confirm which exons remain covered despite breakpoint-blind regions.](figures/coverage_tracks_page2.png){width=92%}
 
 ## Composition QC — GC and Tm
 
@@ -805,7 +798,7 @@ Stage 4 counts, per bait, how many off-target loci it hits above the identity/le
 bait has 0; one tolerated hit (≤ `offtarget_max_hits`) still passes; more are rejected. The long tail (baits
 hitting hundreds or thousands of loci) are repeat-derived candidates, correctly discarded.
 
-![Off-target hit-count distribution, **binned x-axis** (0 / 1 / 2–5 / 6–20 / 21–100 / >100) with a log y-axis and counts above each bar. The bin at 0 (N baits) are unique; the bin at 1 (tolerated, tagged `off_target_flag=1`) and 2–5 are paralog hits; the right-hand bins are repeat baits that are rejected. Binning keeps the 0-to-thousands range readable.](figures/offtarget_hist.png){width=80%}
+![Off-target hit-count distribution, **binned x-axis** (0 / 1 / 2–5 / 6–20 / 21–100 / >100) with a log y-axis and counts above each bar. The bin at 0 are unique baits; the bin at 1 (tolerated, tagged `off_target_flag=1`) and 2–5 are paralog hits; the right-hand bins are repeat baits that are rejected. Binning keeps the 0-to-thousands range readable.](figures/offtarget_hist.png){width=80%}
 
 ## Boosting / dedup — copy number
 
@@ -818,10 +811,10 @@ the pool; they do **not** add distinct oligos, so they do not change the pool si
 ## Re-tiling convergence — when non-convergence is correct
 
 Stage 6 iteratively tiles denser baits over gaps and re-checks them, up to `retile_max_passes`, aiming for
-`coverage_target` (0.95) of the **masked** target. On the human panel it climbs 86.9% → 91.7% and then
+`coverage_target` (0.95) of the **masked** target. A typical run climbs a few points across passes and then
 **stops without reaching 0.95** — and that is the **right** outcome: the remaining gaps are non-specific /
 repeat sequence that denser baiting cannot fix. **Non-convergence here is honest, not a bug** — forcing baits
-into those regions would just add off-target probes.
+into those regions only adds off-target probes.
 
 ![Coverage convergence across re-tiling passes. The curve plateaus below the target line because the residual gaps are genomically non-specific — the correct place to stop.](figures/convergence.png){width=70%}
 
@@ -832,10 +825,11 @@ into those regions would just add off-target probes.
 ## Pool cost and tiers
 
 CaptureForge predicts an **oligo-pool synthesis cost** = unique baits × `per_oligo_price`, and the smallest
-oligo-pool **tier** the panel fits. On the human panel: **N unique baits → $N**, fitting the
-**12,000** tier with headroom. A *tripwire* prevents silently spilling into a larger, more expensive tier.
+oligo-pool **tier** the panel fits. As a worked example with the placeholder price, a panel of **7,000 unique
+baits** at **$0.00200/oligo** costs **$14.00** and fits the **12,000** tier with headroom. A *tripwire*
+prevents silently spilling into a larger, more expensive tier.
 
-![Unique bait count against the configured pool-size tiers. The bar must sit under a tier line; here N fits the 12k tier. If it crosses a line, the pipeline flags it rather than silently using the next tier.](figures/cost_pool_tier.png){width=70%}
+![Unique bait count against the configured pool-size tiers. The bar must sit under a tier line; a count that fits the smallest (12k) tier leaves headroom. If it crosses a line, the pipeline flags it rather than silently using the next tier.](figures/cost_pool_tier.png){width=70%}
 
 > **What the pool cost is and is NOT.** It is the **synthesis cost of the oligo pool only**. It does **not**
 > include per-sample assay/capture reagents, biotinylation/IVT, sequencing, or vendor setup fees, and the
@@ -849,7 +843,7 @@ oligo-pool **tier** the panel fits. On the human panel: **N unique baits → $N*
 |---|---|---|
 | `ERROR: specificity reference contains ALT/decoy/HLA contigs` (exit 3) | You pointed `--specificity_db` at a toplevel/with-alt index | Rebuild from the **no-alt primary assembly** with `bin/build_specificity_index.sh`; see the reference-invariant section |
 | `ERROR: specificity_db not found … must be an ABSOLUTE path` | Relative `--specificity_db`; it is referenced in place, not staged | Use an absolute path to the index prefix |
-| A gene at **0% coverage** | Either a real paralog problem **or** a reference artifact | Check the off-target subjects: if they are alt-haplotype contigs (`HSCHR…`), it's a reference artifact (the GENE lesson) — fix the index; if they are a distinct paralog gene, it's genuine paralog-limited coverage |
+| A gene at **0% coverage** | Either a real paralog problem **or** a reference artifact | Check the off-target subjects: if they are alt-haplotype contigs (`HSCHR…`), it's a reference artifact (the no-alt invariant) — fix the index; if they are a distinct paralog gene, it's genuine paralog-limited coverage |
 | **Most baits rejected** on a new organism | AT-rich (or GC-rich) genome vs the human GC/Tm window | Widen/shift `gc_min`/`gc_max`/`tm_min` (see Plasmodium example) |
 | `python3: command not found` / `ModuleNotFoundError` on macOS | `/usr/bin/env python3` resolved to Homebrew python, not the env | `conda activate captureforge && export PATH="$CONDA_PREFIX/bin:$PATH"`, or run `-profile <x>,conda`/`,docker` |
 | Specificity numbers differ local vs HPC | blastn (local) vs bowtie2 (HPC) detect off-targets slightly differently | Re-validate on the production engine before ordering; both are correct, the margins differ |
@@ -909,11 +903,11 @@ The `baits.csv` columns cover what every template needs; reshape/rename per the 
 
 1. **Validate the production specificity engine** — if you designed with blastn locally but will deploy
    bowtie2 on the HPC, re-run specificity on the production engine and diff.
-2. **Decide orthogonal assays** for breakpoint-blind / paralog-limited loci (GENE, GENE on the human panel).
+2. **Decide orthogonal assays** for breakpoint-blind / paralog-limited loci (the genes flagged in the QC).
 3. **Replace placeholder costs** (`per_oligo_price`, `pool_tiers`) with real vendor quotes.
 4. **Confirm the Tm window** matches your actual capture protocol (the default assumes capture, not PCR).
-5. **Confirm accepted losses** — e.g. GENE exon8 is 100% inside an AluJb SINE and is intentionally **not
-   baited** (baiting it would pull down ~1M genomic Alu copies).
+5. **Confirm accepted losses** — e.g. an exon that falls entirely inside a high-copy SINE/Alu element is
+   intentionally **not baited** (baiting it would pull down ~1M genomic Alu copies).
 
 ---
 
@@ -925,7 +919,7 @@ The `baits.csv` columns cover what every template needs; reshape/rename per the 
   - **Curated CNV-breakpoint targeting** — replace whole-locus CNV tiling with targeted breakpoint baits
     (needs curated breakpoint coordinates).
   - **Paralog-aware design** — design baits at paralog-discriminating positions to recover more unique
-    coverage for genes like GENE/GENE/GENE.
+    coverage for paralog-limited genes.
   - **Pilot-capture coverage feedback loop** — feed empirical pilot-capture depth back to re-balance bait
     copy numbers (boost under-covered, trim over-covered).
 
@@ -943,8 +937,8 @@ Every run records what produced it:
   and Apptainer images.
 - **MANIFEST** — md5 of each deliverable.
 
-To cite the exact references, read the release + md5 fields from `refs.provenance.json` (e.g. for the human
-run: Ensembl r112 GTF, UCSC hg38 rmsk/simpleRepeat, Ensembl Variation REST for rsIDs).
+To cite the exact references, read the release + md5 fields from `refs.provenance.json` (for a human run, for
+example: Ensembl r112 GTF, UCSC hg38 rmsk/simpleRepeat, Ensembl Variation REST for rsIDs).
 
 ---
 
@@ -965,8 +959,8 @@ run: Ensembl r112 GTF, UCSC hg38 rmsk/simpleRepeat, Ensembl Variation REST for r
 
 - **Do I need MANE?** Only for human, and only to prefer the clinical canonical transcript. Other organisms
   fall back to Ensembl-canonical or the longest transcript.
-- **Why is my raw coverage "only" ~67%?** Because ~25 points of that is sequence intentionally masked as
-  uncapturable. Read the **mappable** number (~NN.N%).
+- **Why is my raw coverage "only" ~67%?** Because a large share of that gap is sequence intentionally masked
+  as uncapturable. Read the **mappable** number (covered ÷ tileable target) instead.
 - **Can I run without RepeatMasker/dbSNP/regulatory tracks?** Yes — masking falls back to dustmasker, anchors
   need a user BED, and `regulatory` classes produce nothing (promoter windows still come from the GTF TSS).
 - **Why did a gene come out at 0%?** Check whether the off-targets are alt-haplotype contigs (reference
@@ -981,77 +975,4 @@ releases from `refs.provenance.json`.
 # Version / changelog
 
 - **0.1.0** — initial release: 10-stage Nextflow pipeline, three profiles, three input on-ramps, no-alt
-  reference invariant enforced, QC dashboard + figures, generic order package. First production use: multi-gene
-  human study-susceptibility panel (N unique baits, ~NN.N% mappable coverage, pool tier).
-
-# Appendix A — Per-gene bait composition (gene × class)
-
-Bait counts per gene broken down by design class (from `baits.csv`; multi-class baits attributed to
-their primary class, so the table sums to the N unique baits). Source: 
-`results/full_run/figures/baits_per_gene_by_class.tsv`; figures: `baits_per_gene_by_class_page{1,2}.png`.
-
-| gene | coding | promoter | cnv | str | anchor | total |
-|---|---|---|---|---|---|---|
-| GENE | 116 | 0 | 0 | 1029 | 4 | 1149 |
-| GENE | 53 | 0 | 721 | 0 | 0 | 774 |
-| GENE | 43 | 0 | 705 | 0 | 0 | 748 |
-| GENE | 11 | 0 | 509 | 0 | 0 | 520 |
-| GENE | 222 | 49 | 0 | 0 | 0 | 271 |
-| GENE | 45 | 0 | 0 | 154 | 0 | 199 |
-| GENE | 140 | 29 | 0 | 0 | 6 | 175 |
-| GENE | 145 | 25 | 0 | 0 | 0 | 170 |
-| GENE | 160 | 0 | 0 | 0 | 0 | 160 |
-| GENE | 24 | 17 | 0 | 117 | 0 | 158 |
-| GENE | 110 | 43 | 0 | 0 | 0 | 153 |
-| GENE | 130 | 0 | 0 | 0 | 0 | 130 |
-| GENE | 126 | 0 | 0 | 0 | 0 | 126 |
-| GENE | 33 | 18 | 0 | 64 | 5 | 120 |
-| GENE | 78 | 30 | 0 | 0 | 0 | 108 |
-| GENE | 79 | 26 | 0 | 0 | 0 | 105 |
-| GENE | 103 | 0 | 0 | 0 | 0 | 103 |
-| GENE | 57 | 46 | 0 | 0 | 0 | 103 |
-| GENE | 77 | 20 | 0 | 0 | 0 | 97 |
-| GENE | 43 | 47 | 0 | 0 | 0 | 90 |
-| GENE | 68 | 17 | 0 | 0 | 3 | 88 |
-| GENE | 86 | 0 | 0 | 0 | 0 | 86 |
-| GENE | 46 | 37 | 0 | 0 | 3 | 86 |
-| GENE | 64 | 21 | 0 | 0 | 0 | 85 |
-| GENE | 83 | 0 | 0 | 0 | 0 | 83 |
-| GENE | 36 | 43 | 0 | 0 | 0 | 79 |
-| GENE | 33 | 44 | 0 | 0 | 0 | 77 |
-| GENE | 22 | 0 | 55 | 0 | 0 | 77 |
-| GENE | 71 | 0 | 0 | 0 | 0 | 71 |
-| GENE | 70 | 0 | 0 | 0 | 0 | 70 |
-| GENE | 55 | 0 | 0 | 0 | 10 | 65 |
-| GENE | 64 | 0 | 0 | 0 | 0 | 64 |
-| GENE | 64 | 0 | 0 | 0 | 0 | 64 |
-| GENE | 58 | 0 | 0 | 0 | 5 | 63 |
-| GENE | 15 | 44 | 0 | 0 | 0 | 59 |
-| GENE | 52 | 0 | 0 | 0 | 5 | 57 |
-| GENE | 53 | 0 | 0 | 0 | 0 | 53 |
-| GENE | 30 | 21 | 0 | 0 | 0 | 51 |
-| GENE | 50 | 0 | 0 | 0 | 0 | 50 |
-| GENE | 45 | 0 | 0 | 0 | 0 | 45 |
-| GENE | 41 | 0 | 0 | 0 | 4 | 45 |
-| GENE | 45 | 0 | 0 | 0 | 0 | 45 |
-| GENE | 21 | 19 | 0 | 0 | 5 | 45 |
-| GENE | 44 | 0 | 0 | 0 | 0 | 44 |
-| GENE | 41 | 0 | 0 | 0 | 0 | 41 |
-| GENE | 40 | 0 | 0 | 0 | 0 | 40 |
-| GENE | 40 | 0 | 0 | 0 | 0 | 40 |
-| GENE | 39 | 0 | 0 | 0 | 0 | 39 |
-| GENE | 38 | 0 | 0 | 0 | 0 | 38 |
-| GENE | 35 | 0 | 0 | 0 | 0 | 35 |
-| GENE | 6 | 29 | 0 | 0 | 0 | 35 |
-| GENE | 32 | 0 | 0 | 0 | 0 | 32 |
-| GENE | 31 | 0 | 0 | 0 | 0 | 31 |
-| GENE | 30 | 0 | 0 | 0 | 0 | 30 |
-| GENE | 29 | 0 | 0 | 0 | 0 | 29 |
-| GENE | 26 | 0 | 0 | 0 | 0 | 26 |
-| GENE | 26 | 0 | 0 | 0 | 0 | 26 |
-| GENE | 22 | 0 | 0 | 0 | 0 | 22 |
-| GENE | 17 | 0 | 0 | 0 | 0 | 17 |
-| **total** | **3463** | **625** | **1990** | **1364** | **50** | **N** |
-
-(No `regulatory` column: the production run had no regulatory-build GFF, so promoter windows came
-from the GTF TSS and the regulatory class produced no intervals.)
+  reference invariant enforced, QC dashboard + figures, generic order package.

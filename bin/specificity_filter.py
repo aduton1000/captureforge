@@ -58,7 +58,8 @@ def assert_noalt_reference(db, aligner, genome_fai=None):
     """FAIL LOUD if the specificity reference contains alt/decoy/HLA contigs, or
     if it disagrees with the design genome. This prevents the classic trap of
     pointing CaptureForge at a convenient toplevel/with-alt BLAST db, which makes
-    MHC-region genes (e.g. GENE) look non-specific vs their own alt haplotypes."""
+    genes in the MHC and other alt-haplotype regions look non-specific vs their
+    own alternate-haplotype copies."""
     import glob
     exists = {"blast": glob.glob(db + ".n*"),
               "bowtie2": glob.glob(db + ".*.bt2*"),

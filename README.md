@@ -100,8 +100,7 @@ The full user manual covers concepts, laptop and shared-HPC installs, the start-
 
 - **Manual**: [`docs/manual/captureforge_manual.md`](docs/manual/captureforge_manual.md) · [PDF](docs/manual/captureforge_manual.pdf)
 - **HPC deployment**: [`docs/hpc_deployment.md`](docs/hpc_deployment.md)
-- **Design rationale**: [`docs/design_decisions.md`](docs/design_decisions.md)
-- **Worked example**: a multi-gene human study-susceptibility panel ([`docs/DESIGN_REPORT.md`](docs/DESIGN_REPORT.md), [`docs/qc_dashboard.html`](docs/qc_dashboard.html)). The curated source workbook is not distributed; the example is reproducible from the input on-ramps and tracked outputs. Nothing in the pipeline is study-specific.
+- **Outputs overview**: [`docs/outputs_overview.md`](docs/outputs_overview.md) — what a run produces (bait set, the as-built `final_covered_targets.bed`, and the QC dashboard). The manual works a full example end-to-end starting from a single gene name, and ships a `test`-profile run against a synthetic mini-genome fixture.
 
 ## CaptureForge and CallForge
 

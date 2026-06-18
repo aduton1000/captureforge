@@ -1,7 +1,7 @@
 # ═══════════════════════════════════════════════════════════════════════════
 #  CaptureForge — Apptainer/Singularity definition (HPC; Docker usually banned)
 #  Build:  apptainer build captureforge.sif env/captureforge.def
-#  Native linux-64 toolchain (no emulation) for the production multi-gene run.
+#  Native linux-64 toolchain (no emulation) for whole-genome production runs.
 # ═══════════════════════════════════════════════════════════════════════════
 Bootstrap: docker
 From: mambaorg/micromamba:1.5.8

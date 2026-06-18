@@ -117,7 +117,7 @@ class RawFormsStillWork(unittest.TestCase):
         # the wrapped helper is argv-callable AND the raw script still works
         mod_path = os.path.join(REPO, "bin", "init_gene_list.py")
         with tempfile.TemporaryDirectory() as d:
-            genes = Path(d) / "g.txt"; genes.write_text("GENE\nCD209\n")
+            genes = Path(d) / "g.txt"; genes.write_text("TP53\nEGFR\n")
             out = Path(d) / "panel.spec.csv"
             r = subprocess.run([sys.executable, mod_path, str(genes), "-o", str(out)],
                                capture_output=True, text=True)

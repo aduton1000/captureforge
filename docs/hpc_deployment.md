@@ -1,7 +1,7 @@
 # CaptureForge — HPC deployment (SLURM + Apptainer)
 
-The multi-gene production run is intended for the HPC: whole-genome indexing and specificity mapping are
-heavy. This is a single central install other users invoke.
+A large whole-genome production run is best suited to the HPC: whole-genome indexing and specificity mapping
+are heavy. This is a single central install other users invoke.
 
 ## 0. One-time: central install
 

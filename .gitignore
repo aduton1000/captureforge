@@ -76,7 +76,6 @@ env/.conda/
 .vscode/
 
 # Never commit curated gene-list workbooks (may contain unpublished panel data).
-# The study workbook was purged from history; keep it out for good.
 assets/gene_lists/*.xlsx
 
 # Keep the small example/test inputs and templates (text/CSV only)
@@ -85,7 +84,7 @@ assets/gene_lists/*.xlsx
 !assets/gene_lists/*.txt
 !test/data/**
 
-# Local-only preserved data (e.g. the study workbook copy) — never committed
+# Local-only preserved data (e.g. a curated source workbook copy) — never committed
 _local/
 
 # local tool installs — ignore Nextflow's runtime cruft (downloaded distributions,

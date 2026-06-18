@@ -45,7 +45,7 @@ automatically (the row containing a `Gene` cell). Recognized columns:
 
 | workbook column | used for |
 |---|---|
-| `Gene` (**required**) | symbol (alias-in-parentheses tolerated, e.g. `GENE (GENE)`) |
+| `Gene` (**required**) | symbol (alias-in-parentheses tolerated, e.g. `ERBB2 (HER2)`) |
 | `Variant class` | mapped to design classes (see mapping below) |
 | `Key variants to capture` | scanned for `rs\d+` → anchor targets |
 | `Locus` | cytoband (informational / QC) |
@@ -63,8 +63,8 @@ automatically (the row containing a `Gene` cell). Recognized columns:
 ## Normalization rules (all on-ramps)
 
 1. **Alias resolution.** A symbol written `A (B)` is resolved to whichever of `A`/`B` is a valid current
-   symbol in the supplied GTF (`gene_name`). Examples: `GENE (GENE)`→`GENE`, `GENE (GENE)`→`GENE`,
-   `GENE (GENE)`→`GENE`, `GENE (GENE)`→`GENE`. Case-insensitive fallback is attempted.
+   symbol in the supplied GTF (`gene_name`). Examples: `ERBB2 (HER2)`→`ERBB2`, `TP53 (p53)`→`TP53`,
+   `MTOR (FRAP1)`→`MTOR`, `CDKN2A (p16)`→`CDKN2A`. Case-insensitive fallback is attempted.
 2. **Validation.** Every symbol must resolve to an Ensembl gene in the GTF. Unresolvable symbols cause a
    **loud failure** with the offending list (override with `--allow-unresolved` to skip+warn).
 3. **Anchors.** `rs\d+` tokens are extracted as anchor targets (±`anchor_flank` bp, default 150).
