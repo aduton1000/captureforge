@@ -3,7 +3,7 @@ title: "CaptureForge User Manual"
 subtitle: "A general-purpose hybridization-capture bait (probe) design pipeline — v0.1.0"
 author: |
   Bright Adu\
-  Genomics & Bioinformatics Core, Noguchi Memorial Institute for Medical Research,\
+  Genomics and Bioinformatics Core Facility, Noguchi Memorial Institute for Medical Research,\
   University of Ghana, Legon, Ghana
 date: "13 June 2026"
 ---
@@ -532,9 +532,15 @@ captureforge run -profile local -params-file params.full.yaml
 
 ## Full run — `hpc_slurm` with Apptainer
 
+Build the container once (Apptainer and Singularity are interchangeable — `singularity build` takes the same
+arguments), then run through the same `captureforge run` front door used locally, pointing `--pipeline` at the
+installed `main.nf`:
+
 ```bash
 apptainer build captureforge.sif env/captureforge.def
-nextflow run /shared/apps/captureforge/main.nf -profile hpc_slurm,apptainer \
+captureforge run \
+    --pipeline /shared/apps/captureforge/main.nf \
+    -profile hpc_slurm,apptainer \
     -params-file my_panel.params.yaml \
     --genome_fasta $CF_REFS/GRCh38.primary_assembly.fa \
     --gtf $CF_REFS/GRCh38.112.gtf.gz \
@@ -547,6 +553,13 @@ nextflow run /shared/apps/captureforge/main.nf -profile hpc_slurm,apptainer \
     --scratch_dir $TMPDIR \
     --outdir results
 ```
+
+> On a **deployed** cluster, `module load captureforge` puts the launcher on PATH and resolves the install
+> path, the container image, and the `hpc_slurm,apptainer` profile from the modulefile — so the invocation
+> reduces to `captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue>` (the Lmod wrapper),
+> with no `--pipeline` needed. The exact PATH/module mechanism, the shared install path, and the
+> partition/account are **finalized at HPC deployment** — see *Shared HPC install* above and
+> `docs/hpc_deployment.md`. Keep `--slurm_partition <queue>` as a placeholder for your site's queue.
 
 ---
 
@@ -969,8 +982,11 @@ example: Ensembl r112 GTF, UCSC hg38 rmsk/simpleRepeat, Ensembl Variation REST f
 
 # Citation
 
-See `CITATION.cff` in the repository root. Cite CaptureForge by name and version, and cite the exact reference
-releases from `refs.provenance.json`.
+**Author:** Bright Adu, Genomics and Bioinformatics Core Facility, Noguchi Memorial Institute for Medical
+Research, University of Ghana, Legon, Ghana.
+
+See `CITATION.cff` in the repository root for the machine-readable citation. Cite CaptureForge by name and
+version, and cite the exact reference releases from `refs.provenance.json`.
 
 # Version / changelog
 

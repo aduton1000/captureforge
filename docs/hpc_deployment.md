@@ -53,9 +53,13 @@ bin/resolve_rsids.py --from-targets <(bin/parse_gene_list.py --input <panel> --g
 
 ## 4. Run on SLURM
 
+Use the same `captureforge run` front door as a local run, pointing `--pipeline` at the installed `main.nf`
+(the explicit form, before the Lmod module is loaded — §5 covers the module-based shortcut):
+
 ```bash
 cd /scratch/$USER/run1
-nextflow run /shared/apps/captureforge/main.nf \
+captureforge run \
+    --pipeline /shared/apps/captureforge/main.nf \
     -profile hpc_slurm,apptainer \
     -params-file my_panel.params.yaml \
     --genome_fasta   $CF_REFS/Homo_sapiens.GRCh38.dna.primary_assembly.fa \

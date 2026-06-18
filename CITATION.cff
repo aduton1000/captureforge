@@ -5,7 +5,9 @@ title: >-
 message: If you use CaptureForge, please cite it.
 type: software
 authors:
-  - name: Genomics & Bioinformatics Core
+  - family-names: Adu
+    given-names: Bright
+    affiliation: "Genomics and Bioinformatics Core Facility, Noguchi Memorial Institute for Medical Research, University of Ghana, Legon, Ghana"
 abstract: >-
   CaptureForge is a reusable, end-to-end Nextflow (DSL2) pipeline that turns a
   gene list plus per-gene design intent into order-ready biotinylated-bait oligo
