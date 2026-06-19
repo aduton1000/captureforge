@@ -745,8 +745,9 @@ CaptureForge reports coverage two ways:
   actually bait.
 - **raw coverage** = covered ÷ **raw** target — the honest end-to-end number over the *nominal* footprint.
 
-A typical panel shows a **high mappable** number (often above 90%) and a **lower raw** number — for
-illustration, mappable ≈ 90% against raw ≈ 67%. **This is by design.** The gap is sequence intentionally
+A typical panel shows a **high mappable** number (often above 90%) and a **lower raw** number. In a
+repeat-heavy or AT-rich panel the gap can be dramatic — for illustration, mappable ≈ 90% against raw ≈ 67%
+(the bundled `test` panel's gap is much smaller). **This is by design.** The gap is sequence intentionally
 removed by masking — repeats, segmental duplications, STR cores, Alu elements — which is **genomically
 uncapturable** by hybridization. A high mappable number with a lower raw number is the *expected, honest*
 result, not a failure.
@@ -852,11 +853,13 @@ into those regions only adds off-target probes.
 ## Pool cost and tiers
 
 CaptureForge predicts an **oligo-pool synthesis cost** = unique baits × `per_oligo_price`, and the smallest
-oligo-pool **tier** the panel fits. As a worked example with the placeholder price, a panel of **7,000 unique
-baits** at **$0.00200/oligo** costs **$14.00** and fits the **12,000** tier with headroom. A *tripwire*
-prevents silently spilling into a larger, more expensive tier.
+oligo-pool **tier** the panel fits. As a worked example with the placeholder price, the bundled `test` panel of
+**12,963 unique baits** at **$0.00200/oligo** costs **$25.93**. That count **exceeds the smallest 12,000 tier**,
+so it does *not* fit there — it crosses the 12,000 line and lands in the **92,000** tier, and a *tripwire*
+fires. The tripwire is the point: it prevents the pipeline from silently spilling into a larger, more expensive
+tier, so you decide whether to trim the panel or accept the bigger pool.
 
-![Unique bait count against the configured pool-size tiers. The bar must sit under a tier line; a count that fits the smallest (12k) tier leaves headroom. If it crosses a line, the pipeline flags it rather than silently using the next tier.](figures/cost_pool_tier.png){width=70%}
+![Unique bait count against the configured pool-size tiers. Here the bait-count bar crosses the smallest (12k) tier line and lands in the 92k tier, so the pipeline **flags** it (the tripwire) rather than silently using the next tier up. A count that stays under the smallest line would fit it with headroom.](figures/cost_pool_tier.png){width=70%}
 
 > **What the pool cost is and is NOT.** It is the **synthesis cost of the oligo pool only**. It does **not**
 > include per-sample assay/capture reagents, biotinylation/IVT, sequencing, or vendor setup fees, and the
@@ -986,8 +989,9 @@ example: Ensembl r112 GTF, UCSC hg38 rmsk/simpleRepeat, Ensembl Variation REST f
 
 - **Do I need MANE?** Only for human, and only to prefer the clinical canonical transcript. Other organisms
   fall back to Ensembl-canonical or the longest transcript.
-- **Why is my raw coverage "only" ~67%?** Because a large share of that gap is sequence intentionally masked
-  as uncapturable. Read the **mappable** number (covered ÷ tileable target) instead.
+- **Why is my raw coverage "only" ~67%?** (e.g. in a repeat-heavy panel where the gap is large.) Because a
+  large share of that gap is sequence intentionally masked as uncapturable. Read the **mappable** number
+  (covered ÷ tileable target) instead.
 - **Can I run without RepeatMasker/dbSNP/regulatory tracks?** Yes — masking falls back to dustmasker, anchors
   need a user BED, and `regulatory` classes produce nothing (promoter windows still come from the GTF TSS).
 - **Why did a gene come out at 0%?** Check whether the off-targets are alt-haplotype contigs (reference
