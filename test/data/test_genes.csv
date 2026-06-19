@@ -1,0 +1,11 @@
+gene,promoter,regulatory,cnv,str,extra_regions,anchors
+TP53,1,0,0,0,,
+EGFR,1,0,0,0,,
+BRCA1,1,1,0,1,,
+PTEN,0,0,1,0,,
+ERBB2,1,1,0,0,,rs0000001
+KRAS,0,0,0,0,,
+BRAF,0,0,0,1,,
+APC,1,0,0,0,,
+RB1,0,0,1,0,,
+VHL,0,0,0,0,,rs0000002

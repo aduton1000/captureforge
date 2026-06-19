@@ -37,24 +37,29 @@ cd captureforge
 mamba env create -f env/captureforge.yml                       # Linux
 CONDA_SUBDIR=osx-64 mamba env create -f env/captureforge.yml   # macOS / Apple Silicon
 
-# register the `captureforge` command
+# activate it so `captureforge` installs into this env, not your base environment
+conda activate captureforge
+
+# register the `captureforge` command (into the activated env)
 pip install -e .
-captureforge --version
+captureforge --version    # success: prints e.g. "captureforge 0.1.0"
 ```
 
 A run composes **two** profiles with a comma: an **execution** profile — `local` (this machine: any Linux/macOS, Windows via WSL2) or `hpc_slurm` (a SLURM cluster) — and a **packaging** profile — `conda`, `docker`, or `apptainer` — that selects how dependencies are provided. For example, `-profile local,conda` runs on this machine using the conda environment.
 
 ## Quickstart
 
-Run the bundled 10-gene test panel end-to-end against a generated mini-genome fixture:
+Run the bundled 10-gene test panel end-to-end. The fixture (a generic
+`TP53/EGFR/BRCA1/…` mini-genome) ships pre-built in `test/data/`, so this works
+straight from a clone — no build step, no local GRCh38 needed:
 
 ```bash
-bash test/data/make_test_reference.sh    # build the mini-genome fixture
-captureforge run -profile test,conda
+conda activate captureforge              # so the pipeline uses this env's tools
+captureforge run -profile test           # or: -profile test,conda
 bash test/check_outputs.sh               # sanity-check: expects all six design classes
 ```
 
-This writes a complete design to `results/` — `baits.fasta` / `baits.csv`, `final_covered_targets.bed`, and `qc_dashboard.html` — in about two minutes. (The `test` profile uses a synthetic mini-genome fixture; it exercises the machinery, not real-panel quality.)
+This writes a complete design to `results/` — `baits.fasta` / `baits.csv`, `final_covered_targets.bed`, and `qc_dashboard.html` — in about two minutes. (The `test` profile uses a synthetic mini-genome fixture of generic, non-panel exemplar genes; it exercises the machinery, not real-panel quality. To rebuild/refresh the fixture for reproducibility, see `test/data/make_test_reference.sh` — not required to run the quickstart.)
 
 ## Usage
 

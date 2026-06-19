@@ -8,7 +8,9 @@ params.yaml
 
 # Reference data & indices
 refs/
-data/
+# Top-level run/reference data only — anchored to repo root so the shipped
+# `test/data/` fixture (re-included below) is NOT swept up by a bare `data/`.
+/data/
 indices/
 *.fa
 *.fasta
@@ -82,7 +84,12 @@ assets/gene_lists/*.xlsx
 !assets/gene_lists/*.csv
 !assets/gene_lists/*.tsv
 !assets/gene_lists/*.txt
+# Ship the pre-built generic test fixture (CSV spec + mini-genome + indices) so
+# `captureforge run -profile test` works straight from a clone. This re-include
+# overrides the broad *.fa/*.gtf/*.ndb/etc rules above for test/data/ only.
 !test/data/**
+# …but never ship OS junk that the blanket re-include would otherwise catch.
+test/data/**/.DS_Store
 
 # Local-only preserved data (e.g. a curated source workbook copy) — never committed
 _local/

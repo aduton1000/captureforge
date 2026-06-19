@@ -145,6 +145,13 @@ mamba env create -f env/captureforge.yml
 
 # macOS Apple Silicon (arm64): build under Rosetta so all bioconda packages resolve
 CONDA_SUBDIR=osx-64 mamba env create -f env/captureforge.yml
+
+# activate the environment so `captureforge` installs into it, not your base environment
+conda activate captureforge
+
+# register the `captureforge` command (into the activated env)
+pip install -e .
+captureforge --version    # success: prints e.g. "captureforge 0.1.0"
 ```
 
 > **Apple-Silicon PATH note.** The env builds as osx-64 under Rosetta. If you run `-profile <x>,conda`,
@@ -512,12 +519,19 @@ Container-engine profiles `conda`, `docker`, `apptainer` are composed, e.g. `-pr
 
 ## Quickstart — the `test` profile (10 genes, ~2 min)
 
+The fixture (a generic `TP53/EGFR/BRCA1/…` mini-genome) ships pre-built in
+`test/data/`, so this runs straight from a clone — no build step, no local
+GRCh38 required:
+
 ```bash
 conda activate captureforge   # arm64: env must be active (captureforge run warns otherwise)
-bash test/data/make_test_reference.sh        # build a tiny mini-genome fixture from your local GRCh38
 captureforge run -profile test  # or: -profile test,conda
 bash test/check_outputs.sh                    # sanity-check; expects all 6 design classes
 ```
+
+> To rebuild/refresh the fixture (reproducibility, or after editing
+> `test/data/test_genes.csv`), run `test/data/make_test_reference.sh` against
+> your own local GRCh38 — it is **not** required for the quickstart above.
 
 ## Full run — `local`
 

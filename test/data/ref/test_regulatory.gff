@@ -1,0 +1,10 @@
+17_TP53	CaptureForgeTest	enhancer	30101	30701	.	+	.	ID=enh_TP53
+7_EGFR	CaptureForgeTest	enhancer	30101	30701	.	+	.	ID=enh_EGFR
+17_BRCA1	CaptureForgeTest	enhancer	30101	30701	.	+	.	ID=enh_BRCA1
+10_PTEN	CaptureForgeTest	enhancer	30101	30701	.	+	.	ID=enh_PTEN
+17_ERBB2	CaptureForgeTest	enhancer	30101	30701	.	+	.	ID=enh_ERBB2
+12_KRAS	CaptureForgeTest	enhancer	30101	30701	.	+	.	ID=enh_KRAS
+7_BRAF	CaptureForgeTest	enhancer	30101	30701	.	+	.	ID=enh_BRAF
+5_APC	CaptureForgeTest	enhancer	30101	30701	.	+	.	ID=enh_APC
+13_RB1	CaptureForgeTest	enhancer	30101	30701	.	+	.	ID=enh_RB1
+3_VHL	CaptureForgeTest	enhancer	30101	30701	.	+	.	ID=enh_VHL
