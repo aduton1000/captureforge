@@ -173,115 +173,114 @@ docker build -t captureforge:0.1.0 -f env/Dockerfile .
 A laptop install is complete at this point: clone the repo, build the env (or image), and you can run the
 `test` profile and design real panels locally.
 
-## Shared HPC install (this cluster as the worked example)
+## Shared HPC install
 
-For a multi-user cluster you install **once, centrally**, so anyone can put the `captureforge-run` wrapper on
-their `PATH` (or `module load captureforge` where Lmod exists) and run from any node. The commands below use
-**this facility's cluster** as the concrete example; paths marked **[cluster-specific]** are what other sites
-change.
+On a multi-user cluster, install **once, centrally** — environment, container image, and references on shared
+storage — so any user can run from any node with a single command. This section is the deployment spine;
+reference staging is covered under *Reference data* and the run command under *Running the pipeline*, both
+cross-referenced here. Paths under `/hpc/...` are **examples** — substitute your site's layout (marked
+**[site]**). The deployment is validated end-to-end on a SingularityCE / SLURM / no-module cluster.
 
-- **Cluster:** Ubuntu 24.04 x86-64, SingularityCE 4.1.1 (**no `apptainer` binary**), **no module system**
-  (no Lmod), SLURM partition `global`. The install must be reachable **cluster-wide regardless of which node**
-  a job lands on — so the environment, container, and references all live on shared storage.
-- **Shared conda environment** — source the cluster conda, then create the env under the shared envs
-  directory so all four nodes see it:
+### Cluster prerequisites
 
-  ```bash
-  source /hpc/opt/conda/etc/profile.d/conda.sh          # [cluster-specific] shared conda
-  export CONDA_PKGS_DIRS="$HOME/.conda/pkgs"             # if the shared pkgs cache is read-only (see below)
-  mamba env create -f env/captureforge.yml              # lands in /hpc/opt/conda/envs/captureforge
-  conda activate captureforge                            # works from any node
-  ```
-
-  (Linux is native here — **no `CONDA_SUBDIR`/Rosetta**; that is a macOS-only step.)
-
-  > **Shared read-only conda caveat.** When the cluster conda's package cache is not group-writable, env/CLI
-  > creation fails with *"cannot set permissions"* on the pkgs cache. Set `CONDA_PKGS_DIRS` to a writable dir
-  > (as above) first. On a **container-only** deployment you can skip the host env entirely — the tools come
-  > from the `.sif`, and `captureforge run` no longer warns about a missing conda env when an engine is selected.
-
-- **Container image** (native linux; Docker is usually disallowed on shared clusters). One `.sif` runs under
-  either engine — this cluster has SingularityCE, so build with `singularity`:
+- **OS / architecture:** Linux x86-64.
+- **Container engine:** SingularityCE **or** Apptainer — the same `.sif` runs under either (they differ only
+  in the engine toggle). Docker is usually disallowed on shared clusters.
+- **Scheduler:** SLURM (the `hpc_slurm` profile).
+- **Module system (optional):** with Lmod, ship the modulefile stub; without it, the `captureforge-run`
+  wrapper goes on a shared `PATH` and needs no module.
+- **Shared conda (optional):** needed only if you build the host environment rather than running
+  container-only. Source the cluster conda and create the env on shared storage so every node sees it. If the
+  shared package cache is not group-writable, point it at a writable directory first — otherwise conda fails
+  with *"cannot set permissions"* on the pkgs cache:
 
   ```bash
-  # SingularityCE (this cluster — no `apptainer` binary):
-  sudo singularity build /hpc/opt/captureforge/captureforge.sif env/captureforge.def   # [cluster-specific] path
-  #   unprivileged alternative (needs fakeroot — a /etc/subuid + /etc/subgid entry for you):
-  #     singularity build --fakeroot captureforge.sif env/captureforge.def
-  # Apptainer sites instead:     apptainer build captureforge.sif env/captureforge.def
+  source /hpc/opt/conda/etc/profile.d/conda.sh   # [site] shared conda
+  export CONDA_PKGS_DIRS="$HOME/.conda/pkgs"      # if the shared pkgs cache is read-only
+  mamba env create -f env/captureforge.yml        # lands on shared storage; visible from any node
+  conda activate captureforge
   ```
 
-  The provided `.def` deliberately includes `procps` (`ps`) and base shell utils — **Nextflow runs `ps` to poll
-  each task**, so a stripped image makes tasks fail; build from the `.def` and don't trim it. Verify tools with
-  a **non-login** shell (a login shell, `bash -lc`, re-sources profiles and can reset PATH, hiding image tools):
+  A container-only deployment skips the host env entirely — the tools come from the `.sif`.
 
-  ```bash
-  singularity exec /hpc/opt/captureforge/captureforge.sif bowtie2 --version
-  singularity exec /hpc/opt/captureforge/captureforge.sif python -c 'import matplotlib; print(matplotlib.__version__)'
-  singularity exec /hpc/opt/captureforge/captureforge.sif ps --version      # procps present
-  ```
+### Build the container image
 
-- **SLURM partition is required** — there is **no safe default** (clusters differ: `global`, `compute`,
-  `batch`, `normal`, …). Set `slurm_partition` (in the params file or `--slurm_partition <queue>`); discover
-  yours with `sinfo -s`. If it is unset under the `hpc_slurm` profile the run **fails loudly before any job is
-  submitted** (rather than silently submitting to a non-existent partition — e.g. an old `normal` default is
-  rejected with `sbatch: error: invalid partition specified` where the queue is `global`). An account/QOS goes
-  via `slurm_queue_opts`/`clusterOptions` in `conf/hpc_slurm.config`. This facility's partition is `global`
-  (an example — yours may differ).
+One `.sif` serves the whole cluster, under either engine. `sudo singularity build` is the common path; an
+unprivileged build needs fakeroot configured (a `/etc/subuid` + `/etc/subgid` entry for your user):
 
-- **Access mechanism:** the `captureforge-run` wrapper. **This cluster has no module system**, so the wrapper
-  goes on a shared `PATH` and resolves the install root, `.sif`, and refs from environment variables (with
-  install-relative defaults) — no `module load` needed. The tidy path is to fill in the site env file ONCE and
-  source it from `~/.bashrc`, then copy the params template once:
+```bash
+sudo singularity build /hpc/opt/captureforge/captureforge.sif env/captureforge.def   # [site] path
+#   unprivileged alternative (needs fakeroot):
+#     singularity build --fakeroot captureforge.sif env/captureforge.def
+#   Apptainer sites:  apptainer build captureforge.sif env/captureforge.def
+```
 
-  ```bash
-  # one-time (admin): copy + edit share/captureforge-env.sh.example → a shared path
-  cp share/captureforge-env.sh.example /hpc/opt/captureforge/captureforge-env.sh   # [cluster-specific]
-  # one-time (each user): source it
-  echo 'source /hpc/opt/captureforge/captureforge-env.sh' >> ~/.bashrc
-  # one-time: start your params file from the annotated template
-  cp conf/cluster.params.example.yaml site.params.yaml   # then edit refs/index/partition/image
+Build from the provided `env/captureforge.def` — it includes `procps` (`ps`) and base shell utilities that
+Nextflow needs to poll each task, so a stripped image makes tasks fail; do not trim it. Verify tools with a
+**non-login** shell (a login shell re-sources profiles and can reset `PATH`, hiding the image's tools):
 
-  # every run thereafter — short, no preamble:
-  captureforge-run -params-file site.params.yaml --input panel.txt --outdir results
-  ```
+```bash
+singularity exec /hpc/opt/captureforge/captureforge.sif bowtie2 --version
+singularity exec /hpc/opt/captureforge/captureforge.sif python -c 'import matplotlib; print(matplotlib.__version__)'
+singularity exec /hpc/opt/captureforge/captureforge.sif ps --version
+```
 
-  The env file sets `PATH` (wrapper on PATH), `CAPTUREFORGE_HOME/_SIF/_REFS/_ENGINE`, and `CAPTUREFORGE_BIND`.
-  `CAPTUREFORGE_BIND` makes referenced-in-place refs under `/hpc` — like the `--specificity_db` index — visible
-  inside task containers, which otherwise auto-mount only `$HOME`/`/tmp`/CWD. The wrapper exports
-  `SINGULARITY_BIND`/`APPTAINER_BIND` from it (whitelisted so they survive Nextflow's env scrub) and also passes
-  `--bind_paths`. `slurm_partition`, `container_image`, and the reference paths live in the params file, so they
-  are not retyped per run (override any with a CLI flag, e.g. `--slurm_partition <queue>`).
+### Stage references
 
-  Without the env file, the equivalent is to export the same vars by hand:
+Fetch the no-alt primary assembly, clean its headers, faidx it, and build the specificity index from the
+cleaned FASTA — the genome and the index must be the **same cleaned no-alt reference**. The full procedure,
+including why header cleaning matters, is in *Reference data*. Place the references on shared storage and record
+their paths in the params file (below).
 
-  ```bash
-  export PATH=/hpc/opt/captureforge/share/bin:$PATH      # [cluster-specific] install root
-  export CAPTUREFORGE_BIND=/hpc                          # [cluster-specific] bind refs into containers
-  captureforge-run -params-file site.params.yaml --input panel.txt --outdir results
-  ```
+### Configure: site env file and params template
 
-  On a site that **does** have Lmod, the same wrapper is reachable via a module instead:
+Two files reduce a run to one line; fill in each once.
 
-  ```bash
-  module use /hpc/opt/captureforge/share/modulefiles   # [cluster-specific] install root
-  module load captureforge/0.1.0
-  captureforge-run -params-file my_panel.params.yaml
-  ```
+**Site env file.** Copy `share/captureforge-env.sh.example`, set the install root, image, references, engine,
+and container bind, and source it from each user's `~/.bashrc`:
 
-  - `share/bin/captureforge-run` — wrapper that forwards to `nextflow run … -profile hpc_slurm,<engine>`,
-    defaulting to `singularity` (set `CAPTUREFORGE_ENGINE=apptainer` or `CAPTUREFORGE_PROFILE` to override). It
-    passes the resolved `CAPTUREFORGE_SIF` as `--container_image` so tasks run inside the image.
-  - `share/captureforge-env.sh.example` — the site env file: fill in once, source from `~/.bashrc`, and the
-    wrapper + bind are configured (no per-run exports).
-  - `conf/cluster.params.example.yaml` — annotated params-file template a site copies and edits once (cleaned
-    `genome_fasta`, `gtf`, `specificity_db`, `bind_paths`, `container_image`, `slurm_partition`).
-  - `share/modulefiles/captureforge/0.1.0.lua` — optional Lmod modulefile stub for sites that have Lmod
-    (edit `install_root` / `refs_root`); **not required** on a no-module cluster.
+```bash
+cp share/captureforge-env.sh.example /hpc/opt/captureforge/captureforge-env.sh   # [site]
+echo 'source /hpc/opt/captureforge/captureforge-env.sh' >> ~/.bashrc
+```
 
-The **full cluster install/deploy** — container build (Apptainer or Singularity), centralized reference data +
-index, the wrapper on PATH (and the optional modulefile) — is documented step-by-step in
-**`docs/hpc_deployment.md`**.
+It sets `PATH` (so `captureforge-run` is found), `CAPTUREFORGE_HOME/_SIF/_REFS/_ENGINE`, and
+`CAPTUREFORGE_BIND`. On an Lmod site, `module load captureforge/0.1.0` (after `module use
+/hpc/opt/captureforge/share/modulefiles`) sets the same variables instead.
+
+**Params file.** Copy the annotated template and edit the reference paths, index, partition, and image:
+
+```bash
+cp conf/cluster.params.example.yaml site.params.yaml
+```
+
+It carries `genome_fasta` (the cleaned FASTA), `gtf`, `specificity_db`, `specificity_aligner`, `bind_paths`,
+`container_image`, and `slurm_partition`, so none of these are retyped per run.
+
+**The container bind.** Singularity/Apptainer auto-mount only `$HOME`, `/tmp`, and the working directory. The
+specificity index is **referenced in place, not staged into work dirs**, so its root must be bound into task
+containers. Setting `CAPTUREFORGE_BIND` (e.g. `/hpc`) makes the wrapper export `SINGULARITY_BIND` /
+`APPTAINER_BIND`, which the engine profiles whitelist so they survive Nextflow's per-task environment scrub;
+the wrapper also passes `--bind_paths`.
+
+With the env sourced (or the module loaded) and the params file prepared, a run is a single command — see
+*Running the pipeline → Full run (hpc_slurm)*:
+
+```bash
+captureforge-run -params-file site.params.yaml --input panel.txt --outdir results
+```
+
+### Files this install relies on
+
+- `share/bin/captureforge-run` — wrapper that forwards to `nextflow run … -profile hpc_slurm,<engine>` (default
+  `singularity`; set `CAPTUREFORGE_ENGINE=apptainer` or `CAPTUREFORGE_PROFILE` to override) and passes the
+  resolved `CAPTUREFORGE_SIF` as `--container_image`.
+- `share/captureforge-env.sh.example` — the site env file (fill in once, source from `~/.bashrc`).
+- `conf/cluster.params.example.yaml` — the annotated params template.
+- `share/modulefiles/captureforge/0.1.0.lua` — optional Lmod modulefile stub (edit `install_root` /
+  `refs_root`); not needed on a no-module cluster.
+
+`docs/hpc_deployment.md` walks the same deployment end-to-end.
 
 ---
 
@@ -614,7 +613,7 @@ The fixture (a generic `TP53/EGFR/BRCA1/…` mini-genome) ships pre-built in
 GRCh38 required:
 
 ```bash
-conda activate captureforge   # arm64: env must be active (captureforge run warns otherwise)
+conda activate captureforge   # ensure the env is active (or run -profile test,conda)
 captureforge run -profile test  # or: -profile test,conda
 bash test/check_outputs.sh                    # sanity-check; expects all 6 design classes
 ```
@@ -634,20 +633,33 @@ conda activate captureforge   # captureforge run warns if the env is not active 
 captureforge run -profile local -params-file params.full.yaml
 ```
 
-## Full run — `hpc_slurm` with Singularity or Apptainer
+## Full run — `hpc_slurm` (Singularity or Apptainer)
 
-Build the container once (Apptainer and SingularityCE are interchangeable — `singularity build` and
-`apptainer build` take the same arguments and produce the same `.sif`), then run through the same
-`captureforge run` front door used locally, pointing `--pipeline` at the installed `main.nf`. Compose the
-packaging profile that matches your engine — `hpc_slurm,singularity` (SingularityCE clusters) or
-`hpc_slurm,apptainer`:
+On a deployed cluster (see *Shared HPC install*), with the site env sourced and a params file prepared, a full
+run is a single command:
 
 ```bash
-singularity build captureforge.sif env/captureforge.def   # or: apptainer build captureforge.sif env/captureforge.def
+captureforge-run -params-file site.params.yaml --input panel.txt --outdir results
+```
+
+The wrapper resolves the install path, the container image, and the `hpc_slurm,<engine>` profile (default
+`singularity`) from the environment, exports the container bind, and forwards to `nextflow run`.
+
+**`slurm_partition` is required** — there is no safe default, since clusters differ (`global`, `compute`,
+`batch`, `normal`, …). Set it in the params file or with `--slurm_partition <queue>`, and discover valid
+partitions with `sinfo -s`. If it is unset under `hpc_slurm`, the run fails loudly before any job is submitted
+rather than submitting to a non-existent partition. An account or QOS goes via `slurm_queue_opts` /
+`clusterOptions` in `conf/hpc_slurm.config`.
+
+Without the wrapper — or to see what it expands to — call `captureforge run` directly, composing `hpc_slurm`
+with your engine (`hpc_slurm,singularity` on SingularityCE clusters, `hpc_slurm,apptainer` on Apptainer) and
+pointing `--pipeline` at the installed `main.nf`:
+
+```bash
 captureforge run \
-    --pipeline /shared/apps/captureforge/main.nf \
+    --pipeline /hpc/opt/captureforge/main.nf \
     -profile hpc_slurm,singularity \
-    -params-file my_panel.params.yaml \
+    -params-file site.params.yaml \
     --genome_fasta $CF_REFS/Homo_sapiens.GRCh38.dna.primary_assembly.clean.fa \
     --gtf $CF_REFS/GRCh38.112.gtf.gz \
     --specificity_db $CF_REFS/grch38_noalt_bt2 \
@@ -657,40 +669,20 @@ captureforge run \
     --rsid_bed $CF_REFS/anchors.rsid.bed \
     --slurm_partition <queue> \
     --scratch_dir $TMPDIR \
-    --container_image /hpc/opt/captureforge/images/captureforge.sif \
+    --container_image /hpc/opt/captureforge/captureforge.sif \
+    --bind_paths /hpc \
     --outdir results
-# bind refs that live outside $HOME/CWD (e.g. the --specificity_db index under /hpc):
-export SINGULARITY_BIND=/hpc      # APPTAINER_BIND=/hpc on an Apptainer site; [cluster-specific]
 ```
 
-> **`--container_image` (required with any engine).** Sets `process.container` so every task runs *inside* the
-> image (`singularity exec <image> …`) — including the viz stages (`MAKE_FIGURES`, `MAKE_DASHBOARD`). Enabling an
-> engine without it makes Nextflow run tasks on the **host** (incomplete tools → e.g. `No module named
-> 'matplotlib'`); the pipeline now fails loudly instead. Use a local `.sif` path for singularity/apptainer
-> (`/hpc/opt/...` `[cluster-specific]`) or an image tag for docker; best set as `container_image:` in the params
-> file. Bare `-profile test` (no engine) still runs natively and needs no image.
-
-> **Container bind mounts.** Singularity/Apptainer auto-mount only `$HOME`, `/tmp`, and the CWD. The specificity
-> index (`--specificity_db`) is **referenced in place, not staged** — so when references live outside those (e.g.
-> `/hpc/opt/...` `[cluster-specific]`) you must bind that root in, or in-container tasks fail with "No such file or
-> directory". Two ways (use either; default is no bind):
-> - **`export SINGULARITY_BIND=/hpc`** (`APPTAINER_BIND` on an Apptainer site) — **recommended**. Nextflow
->   scrubs the task env, but the engine profiles **whitelist** these vars so they survive and the engine honors
->   them.
-> - **`--bind_paths /hpc`** (or `bind_paths:` in the params file) — applied per task via
->   `process.containerOptions` (a closure resolved after the param merges; an engine `runOptions` ternary would
->   not work, as it evaluates before the merge).
+> **A container engine requires `--container_image`.** It sets `process.container` so every task runs *inside*
+> the `.sif` (including the viz stages); enabling an engine without it makes Nextflow run tasks on the host with
+> incomplete tools, and the pipeline fails loudly instead. Set it as `container_image:` in the params file, or
+> let the wrapper supply it from `CAPTUREFORGE_SIF`. Bare `-profile test` (no engine) runs natively and needs no
+> image.
 >
-> The `captureforge-run` wrapper sets both from `export CAPTUREFORGE_BIND=/hpc`.
-
-> On a **deployed** cluster the `captureforge-run` wrapper resolves the install path, the container image, and
-> the `hpc_slurm,<engine>` profile (default `singularity`) from environment variables — so the invocation
-> reduces to `captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue>`, with no
-> `--pipeline` needed. On a **no-module cluster** the wrapper is reached by putting `<install>/share/bin` on
-> `PATH`; on an Lmod site `module load captureforge` does the same. The exact access mechanism, the shared
-> install path, and the partition/account are **finalized at HPC deployment** — see *Shared HPC install* above
-> and `docs/hpc_deployment.md`. Keep `--slurm_partition <queue>` as a placeholder for your site's queue (e.g.
-> `global` on this cluster).
+> **Referenced-in-place references must be bound in.** The `--specificity_db` index is read in place, not
+> staged, and auto-mounts cover only `$HOME`/`/tmp`/CWD — so its root needs a bind (`CAPTUREFORGE_BIND`, or
+> `bind_paths:` / `--bind_paths`). See *Shared HPC install → Configure* for the mechanism.
 
 ---
 
@@ -986,19 +978,33 @@ tier, so you decide whether to trim the panel or accept the bigger pool.
 
 # Troubleshooting
 
+## Reference, specificity, and coverage
+
 | Symptom | Cause | Fix |
 |---|---|---|
 | `ERROR: specificity reference contains ALT/decoy/HLA contigs` (exit 3) | You pointed `--specificity_db` at a toplevel/with-alt index | Rebuild from the **no-alt primary assembly** with `bin/build_specificity_index.sh`; see the reference-invariant section |
 | `ERROR: specificity_db not found … must be an ABSOLUTE path` | Relative `--specificity_db`; it is referenced in place, not staged | Use an absolute path to the index prefix |
-| `ERROR: specificity db and --genome_fasta are DIFFERENT references` | Index and genome contig names disagree (usually full-header vs first-token) | Build genome + index from the **same cleaned** FASTA (`*.clean.fa` from `fetch_references.sh genome`). Stage 4 also compares first-tokens, so re-pull this fix if it still fires |
-| In-container task: `No such file or directory` on the specificity index | Refs live outside `$HOME`/`/tmp`/CWD and weren't bound into the container | Set `CAPTUREFORGE_BIND=/hpc` (wrapper) or `bind_paths:`/`--bind_paths` to the refs root; auto-mounts don't cover it |
-| Every task fails immediately; logs mention `ps` | Container image lacks `procps` (Nextflow polls tasks with `ps`) | Build from the provided `env/captureforge.def` (it includes `procps`); don't strip the image |
-| `captureforge run` warns *"conda env not detected"* under a container | Cosmetic; tools come from the image | Ignore (now suppressed when an engine/`--container_image` is selected); no `conda activate` needed in-container |
+| `ERROR: specificity db and --genome_fasta are DIFFERENT references` | Index and genome contig names disagree (usually full-header vs first-token) | Build genome + index from the **same cleaned** FASTA (`*.clean.fa` from `fetch_references.sh genome`); Stage 4 also compares first-tokens |
 | A gene at **0% coverage** | Either a real paralog problem **or** a reference artifact | Check the off-target subjects: if they are alt-haplotype contigs (`HSCHR…`), it's a reference artifact (the no-alt invariant) — fix the index; if they are a distinct paralog gene, it's genuine paralog-limited coverage |
 | **Most baits rejected** on a new organism | AT-rich (or GC-rich) genome vs the human GC/Tm window | Widen/shift `gc_min`/`gc_max`/`tm_min` (see Plasmodium example) |
-| `python3: command not found` / `ModuleNotFoundError` on macOS | `/usr/bin/env python3` resolved to Homebrew python, not the env | `conda activate captureforge && export PATH="$CONDA_PREFIX/bin:$PATH"`, or run `-profile <x>,conda`/`,docker` |
-| Specificity numbers differ local vs HPC | blastn (local) vs bowtie2 (HPC) detect off-targets slightly differently | Re-validate on the production engine before ordering; both are correct, the margins differ |
 | Re-tiling "did not converge" warning | Residual gaps are non-specific/repeat | Expected — see the convergence section; not an error |
+
+## HPC and container
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| In-container task: `No such file or directory` on the specificity index | Refs live outside `$HOME`/`/tmp`/CWD and weren't bound into the container | Set `CAPTUREFORGE_BIND=<refs root>` (wrapper) or `bind_paths:`/`--bind_paths`; auto-mounts don't cover it |
+| `sbatch: error: invalid partition specified` | `slurm_partition` points at a partition the cluster doesn't have | Set it to a real partition (`sinfo -s` lists them); there is no safe default |
+| Every task fails immediately; logs mention `ps` | Container image lacks `procps` (Nextflow polls tasks with `ps`) | Build from the provided `env/captureforge.def` (it includes `procps`); don't strip the image |
+| Tool reported missing although it's in the image | A login shell (`bash -lc`) reset `PATH` | Verify with a non-login shell: `singularity exec <img> <tool> --version` |
+| `captureforge run` warns *"conda env not detected"* under a container | Cosmetic; tools come from the image | Ignore (suppressed when an engine/`--container_image` is selected); no `conda activate` needed in-container |
+| Specificity numbers differ local vs HPC | blastn (local) vs bowtie2 (HPC) detect off-targets slightly differently | Re-validate on the production engine before ordering; both are correct, the margins differ |
+
+## Local (laptop)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `python3: command not found` / `ModuleNotFoundError` on macOS | `/usr/bin/env python3` resolved to Homebrew python, not the env | `conda activate captureforge && export PATH="$CONDA_PREFIX/bin:$PATH"`, or run `-profile <x>,conda`/`,docker` |
 | PDF build fails (no LaTeX) | No `xelatex` on the machine | Install TeX Live / TinyTeX, or fall back to the HTML→PDF route (see `bin/build_manual.sh`) |
 
 ## Known doc-vs-behaviour notes
