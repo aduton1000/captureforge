@@ -82,8 +82,15 @@ captureforge run \
     --simplerepeat_bed $CF_REFS/simpleRepeat.GRCh38.txt.gz \
     --rsid_bed       $CF_REFS/anchors.rsid.bed \
     --slurm_partition <queue> --scratch_dir $TMPDIR \
+    --bind_paths /hpc \
     --outdir results
 ```
+
+> **Container bind path (`--bind_paths`).** Singularity/Apptainer only auto-mount `$HOME`, `/tmp`, and the CWD.
+> The specificity index (`--specificity_db`) is **referenced in place — not staged into work dirs** — so if your
+> references live outside those (e.g. under `/hpc/opt/...` `[cluster-specific]`), bind that root into the task
+> containers with `--bind_paths /hpc`. Without it, in-container tasks fail with "No such file or directory" on
+> the index. Default is empty (no bind); set it to your refs/install root.
 
 Tune in `conf/hpc_slurm.config`: `slurm_partition` (your queue — e.g. `global` on some clusters, `normal` is
 the placeholder default; always overridable with `--slurm_partition <queue>`), `slurm_queue_opts`,
@@ -105,6 +112,8 @@ export CAPTUREFORGE_SIF=/shared/apps/captureforge/captureforge.sif
 export CAPTUREFORGE_REFS=/shared/refs/captureforge/GRCh38
 # engine defaults to singularity; an Apptainer site sets:
 #   export CAPTUREFORGE_ENGINE=apptainer
+# bind refs that live outside $HOME/CWD into task containers (forwarded as --bind_paths):
+export CAPTUREFORGE_BIND=/hpc        # [cluster-specific] refs/install root
 captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue>
 ```
 

@@ -41,6 +41,11 @@ PROFILE="${CAPTUREFORGE_PROFILE:-hpc_slurm,${ENGINE}}"
 SIF="${CAPTUREFORGE_SIF:-${CAPTUREFORGE_HOME}/captureforge.sif}"
 REFS="${CAPTUREFORGE_REFS:-${CAPTUREFORGE_HOME}/refs}"
 
+# Host paths to bind into task containers (engine-neutral). Needed when refs are
+# referenced in place outside $HOME/CWD (e.g. /hpc). Empty = no bind. An explicit
+# --bind_paths on the command line still wins (Nextflow takes the last value).
+BIND="${CAPTUREFORGE_BIND:-}"
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   cat <<EOF
 captureforge-run — shared HPC launcher (forwards to: nextflow run main.nf)
@@ -49,6 +54,7 @@ captureforge-run — shared HPC launcher (forwards to: nextflow run main.nf)
   CAPTUREFORGE_PROFILE = ${PROFILE}
   CAPTUREFORGE_SIF     = ${SIF}
   CAPTUREFORGE_REFS    = ${REFS}
+  CAPTUREFORGE_BIND    = ${BIND:-<none>}   # forwarded as --bind_paths (container bind mounts)
 
 usage: captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue> [nextflow args]
 No module system required: place <install_root>/share/bin on PATH and run.
@@ -67,6 +73,10 @@ fi
 if [[ -d "$REFS" ]]; then
   [[ -e "$REFS/grch38_noalt_bt2.1.bt2" || -e "$REFS/grch38_noalt.nsq" ]] || \
     echo "[captureforge-run] note: build a no-alt specificity index in $REFS (see docs/hpc_deployment.md)" >&2
+fi
+# Forward the container bind path so referenced-in-place refs are visible inside tasks.
+if [[ -n "$BIND" ]]; then
+  extra+=("--bind_paths" "$BIND")
 fi
 
 # Prefer the vendored, version-pinned launcher (matches the `captureforge` CLI);
