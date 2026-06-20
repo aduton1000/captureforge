@@ -9,8 +9,15 @@ rejected (or flagged, depending on tolerance).
 
 Backends (--aligner):
   blast    blastn megablast vs a BLAST nucleotide DB  (no index build; used locally)
-  bowtie2  bowtie2 -a vs a prebuilt index             (HPC default)
+  bowtie2  bowtie2 -k <N> vs a prebuilt index         (HPC default)
   bwa      bwa mem -a vs a prebuilt index
+
+bowtie2 uses -k <N> (report up to N alignments then stop), NOT -a (report ALL).
+The verdict only needs to know whether a bait exceeds --max-offtarget, so we
+count hits up to a small cap derived from that threshold instead of enumerating
+every alignment — which is pathological against a real genome (a bait in a
+repeat element can have millions of hits). A hit count that reaches the cap
+means "at least N" (capped), which is sufficient to reject. See derive_max_report().
 
 Self-hit handling is naming-agnostic: each bait has exactly one perfect,
 full-length hit (its source locus); off_target_count = (qualifying hits) - 1.
@@ -118,6 +125,32 @@ def qlen_from_fasta(path):
     return lens
 
 
+# bowtie2 -k cap derivation. Margin slots absorb reported-but-non-qualifying
+# alignments (below --min-identity/--min-lenfrac) so they can't hide an
+# over-threshold bait; the floor keeps the cap sane for tiny M.
+SPEC_K_MARGIN = 10
+SPEC_K_FLOOR = 12
+
+
+def derive_max_report(max_offtarget):
+    """Smallest bowtie2 -k value that still lets the verdict classify correctly.
+
+    A bait is REJECTed when off_count > M, where off_count = qualifying_hits - 1
+    (one full-length self-hit is excluded). So rejection needs M+2 QUALIFYING
+    hits: 1 self-hit + (M+1) off-target hits that exceed M. We must report at
+    least that many *qualifying* alignments to detect the over-threshold case.
+
+    Reported alignments are filtered by identity/length, so some may not qualify;
+    we add SPEC_K_MARGIN slots (and a SPEC_K_FLOOR) so non-qualifying hits don't
+    starve the count. bowtie2 reports best-scoring alignments first, so the
+    qualifying (high-identity, full-length) hits — including the self-hit — are
+    the ones that survive to the cap. A bait that hits the cap has >= N
+    alignments, and since N >= M+2 that guarantees off_count >= M+1 > M => REJECT,
+    exactly as -a would have decided.
+    """
+    return max(max_offtarget + 2 + SPEC_K_MARGIN, SPEC_K_FLOOR)
+
+
 def run_blast(fasta, db, threads, min_id):
     cmd = ["blastn", "-task", "megablast", "-query", fasta, "-db", db,
            "-outfmt", "6 qseqid sseqid pident length qlen sstart send",
@@ -132,13 +165,22 @@ def run_blast(fasta, db, threads, min_id):
     return hits
 
 
-def run_sam(fasta, index, threads, aligner):
+def run_sam(fasta, index, threads, aligner, max_report):
     if aligner == "bowtie2":
-        cmd = ["bowtie2", "-x", index, "-f", "-U", fasta, "-a", "--quiet",
-               "-p", str(threads), "--no-hd"]
+        # -k <N>: report up to N alignments then stop (NOT -a = ALL alignments,
+        # which is pathological against a real genome). N (=max_report) is derived
+        # from --max-offtarget so it's just large enough to decide the verdict; a
+        # bait that reaches the cap is treated as "capped" (>= N hits) and rejected.
+        cmd = ["bowtie2", "-x", index, "-f", "-U", fasta, "-k", str(max_report),
+               "--quiet", "-p", str(threads), "--no-hd"]
+        sys.stderr.write(f"[specificity] bowtie2 -k {max_report} alignment …\n")
     else:  # bwa mem
+        # NOTE: in `bwa mem`, -a means "output all alignments incl. secondary"
+        # (per query), which is far less catastrophic than bowtie2 -a (every
+        # alignment of every read). Left as-is; the reported scaling problem was
+        # specifically bowtie2 -a.
         cmd = ["bash", "-c", f"bwa mem -a -t {threads} {index} {fasta}"]
-    sys.stderr.write(f"[specificity] {aligner} all-hits alignment …\n")
+        sys.stderr.write(f"[specificity] {aligner} all-hits alignment …\n")
     p = subprocess.run(cmd, check=True, text=True, capture_output=True)
     hits = defaultdict(list)
     for line in p.stdout.splitlines():
@@ -166,6 +208,10 @@ def main():
     ap.add_argument("--min-lenfrac", type=float, default=0.50)
     ap.add_argument("--max-offtarget", type=int, default=1,
                     help="tolerated off-target hits; reject if off_target_count > this")
+    ap.add_argument("--max-report", "-k", type=int, default=None,
+                    help="bowtie2 -k cap: max alignments reported per bait. Default is "
+                         "derived from --max-offtarget (just large enough to decide the "
+                         "verdict). A reported count at the cap means 'capped' (>= N hits).")
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--genome-fai", default=None, help="design genome .fai for same-reference cross-check")
     ap.add_argument("--no-ref-check", action="store_true", help="skip the no-alt reference invariant (not recommended)")
@@ -180,10 +226,15 @@ def main():
     bed = read_bed(args.candidates_bed)
     qlens = qlen_from_fasta(args.candidates)
 
+    # bowtie2 -k cap: derived from --max-offtarget unless overridden. Enforce a
+    # minimum so an explicit --max-report can't be set too low to decide the verdict.
+    max_report = args.max_report if args.max_report else derive_max_report(args.max_offtarget)
+    max_report = max(max_report, derive_max_report(args.max_offtarget))
+
     if args.aligner == "blast":
         hits = run_blast(args.candidates, args.db, args.threads, args.min_identity)
     else:
-        hits = run_sam(args.candidates, args.db, args.threads, args.aligner)
+        hits = run_sam(args.candidates, args.db, args.threads, args.aligner, max_report)
 
     min_id_pct = args.min_identity * 100
     out = open(args.output, "w")
@@ -201,7 +252,11 @@ def main():
         qlen = qlens.get(bait_id, 120)
         qhits = hits.get(bait_id, [])
         qualifying = [h for h in qhits if h[0] >= min_id_pct and h[1] >= args.min_lenfrac * qlen]
-        # exclude one perfect/best self-hit
+        # exclude one perfect/best self-hit. NOTE on bowtie2 -k capping: a
+        # repetitive bait reports at most `max_report` alignments, so off_count is
+        # capped at ~(max_report-1) — a capped count is a LOWER BOUND (">=").
+        # Because max_report >= max_offtarget+2, any capped bait has
+        # off_count > max_offtarget and is correctly REJECTed (same as -a).
         off_count = max(0, len(qualifying) - 1)
         off_ids = sorted([h[0] for h in qualifying], reverse=True)[1:]   # identities of off-targets
         max_off = round(off_ids[0], 1) if off_ids else 0.0
@@ -220,6 +275,9 @@ def main():
         "aligner": args.aligner,
         "thresholds": {"min_identity": args.min_identity, "min_lenfrac": args.min_lenfrac,
                        "max_offtarget": args.max_offtarget},
+        # bowtie2 -k cap (None for blast). off_target_count is capped at ~(max_report-1);
+        # a value at/near the cap means the true off-target count is >= that.
+        "max_report": max_report if args.aligner != "blast" else None,
         "n_candidates": sum(by_class_total.values()),
         "n_pass": n_pass,
         "n_reject": sum(by_class_reject.values()),
