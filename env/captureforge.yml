@@ -22,6 +22,18 @@ dependencies:
   - blast=2.16.0           # provides dustmasker
   - primer3=2.6.1          # CLI (primer3_core)
   - viennarna=2.6.4        # optional secondary-structure ΔG
+  # ---- base utilities (lean micromamba base lacks these; Nextflow task wrappers
+  #      + shell scripts assume them inside the container). Left unpinned: base
+  #      utils, not analysis tools — pinning them risks solver conflicts. ----
+  - procps-ng              # provides `ps` — REQUIRED by Nextflow task metric collection
+  - coreutils              # date, stat, env, etc.
+  - grep
+  - sed
+  - gawk
+  - findutils              # find, xargs
+  - which
+  - gzip
+  - tar                    # staging / unstaging
   # ---- python + libs ----
   - python=3.11
   - pip=24.2
