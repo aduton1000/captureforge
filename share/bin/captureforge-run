@@ -42,8 +42,7 @@ SIF="${CAPTUREFORGE_SIF:-${CAPTUREFORGE_HOME}/captureforge.sif}"
 REFS="${CAPTUREFORGE_REFS:-${CAPTUREFORGE_HOME}/refs}"
 
 # Host paths to bind into task containers (engine-neutral). Needed when refs are
-# referenced in place outside $HOME/CWD (e.g. /hpc). Empty = no bind. An explicit
-# --bind_paths on the command line still wins (Nextflow takes the last value).
+# referenced in place outside $HOME/CWD (e.g. /hpc). Empty = no bind.
 BIND="${CAPTUREFORGE_BIND:-}"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
@@ -54,7 +53,7 @@ captureforge-run — shared HPC launcher (forwards to: nextflow run main.nf)
   CAPTUREFORGE_PROFILE = ${PROFILE}
   CAPTUREFORGE_SIF     = ${SIF}
   CAPTUREFORGE_REFS    = ${REFS}
-  CAPTUREFORGE_BIND    = ${BIND:-<none>}   # forwarded as --bind_paths (container bind mounts)
+  CAPTUREFORGE_BIND    = ${BIND:-<none>}   # container bind mounts (exports SINGULARITY_BIND/APPTAINER_BIND + --bind_paths)
 
 usage: captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue> [nextflow args]
 No module system required: place <install_root>/share/bin on PATH and run.
@@ -75,8 +74,16 @@ if [[ -d "$REFS" ]]; then
   [[ -e "$REFS/grch38_noalt_bt2.1.bt2" || -e "$REFS/grch38_noalt.nsq" ]] || \
     echo "[captureforge-run] note: build a no-alt specificity index in $REFS (see docs/hpc_deployment.md)" >&2
 fi
-# Forward the container bind path so referenced-in-place refs are visible inside tasks.
+# Make referenced-in-place refs visible inside tasks, via BOTH supported routes:
+#   1) export SINGULARITY_BIND / APPTAINER_BIND — the engine reads these; Nextflow
+#      whitelists them (engine profiles) so they survive its per-task env scrub. This
+#      is the robust route (the engine-native var is honored host-side).
+#   2) --bind_paths — applied via process.containerOptions (a per-task closure that
+#      sees the merged value). Kept for resilience across Nextflow versions.
+# Duplicate binds of the same path are idempotent.
 if [[ -n "$BIND" ]]; then
+  export SINGULARITY_BIND="${SINGULARITY_BIND:+$SINGULARITY_BIND,}$BIND"
+  export APPTAINER_BIND="${APPTAINER_BIND:+$APPTAINER_BIND,}$BIND"
   extra+=("--bind_paths" "$BIND")
 fi
 

@@ -82,9 +82,11 @@ captureforge run \
     --simplerepeat_bed $CF_REFS/simpleRepeat.GRCh38.txt.gz \
     --rsid_bed       $CF_REFS/anchors.rsid.bed \
     --slurm_partition <queue> --scratch_dir $TMPDIR \
-    --bind_paths /hpc \
     --container_image /hpc/opt/captureforge/images/captureforge.sif \
     --outdir results
+# refs that live outside $HOME/CWD (e.g. the --specificity_db index under /hpc) must be
+# bound into task containers — the reliable way is an exported env var (see callout below):
+export SINGULARITY_BIND=/hpc      # APPTAINER_BIND=/hpc on an Apptainer site; [cluster-specific]
 ```
 
 > **`--container_image` is required when an engine is enabled.** It sets `process.container`, so every task runs
@@ -94,11 +96,20 @@ captureforge run \
 > local `.sif` path (`/hpc/opt/...` `[cluster-specific]`); for docker use the image tag. Put it in the params
 > file as `container_image:` so it's not retyped each run.
 
-> **Container bind path (`--bind_paths`).** Singularity/Apptainer only auto-mount `$HOME`, `/tmp`, and the CWD.
-> The specificity index (`--specificity_db`) is **referenced in place — not staged into work dirs** — so if your
-> references live outside those (e.g. under `/hpc/opt/...` `[cluster-specific]`), bind that root into the task
-> containers with `--bind_paths /hpc`. Without it, in-container tasks fail with "No such file or directory" on
-> the index. Default is empty (no bind); set it to your refs/install root.
+> **Container bind path.** Singularity/Apptainer only auto-mount `$HOME`, `/tmp`, and the CWD. The specificity
+> index (`--specificity_db`) is **referenced in place — not staged into work dirs** — so if your references live
+> outside those (e.g. under `/hpc/opt/...` `[cluster-specific]`) you must bind that root into the task containers,
+> or they fail with "No such file or directory" on the index.
+>
+> - **Primary — `export SINGULARITY_BIND=/hpc`** (or `APPTAINER_BIND` on an Apptainer site). Nextflow scrubs the
+>   task environment, but the `hpc_slurm`/`singularity`/`apptainer` profiles **whitelist** these vars
+>   (`envWhitelist`) so they survive the scrub and the engine honors them. This is the most robust route.
+> - **Alternative — `--bind_paths /hpc`** (or `bind_paths:` in the params file). Applied per task via
+>   `process.containerOptions`. (Note: this is *not* wired through engine `runOptions`, which evaluates at
+>   config-parse time before the value merges and would never bind — the closure form is what makes it work.)
+>
+> Either works; you don't need both. Default is empty (no bind). The `captureforge-run` wrapper sets both from
+> `CAPTUREFORGE_BIND`.
 
 Tune in `conf/hpc_slurm.config`: `slurm_partition` (your queue — e.g. `global` on some clusters, `normal` is
 the placeholder default; always overridable with `--slurm_partition <queue>`), `slurm_queue_opts`,
@@ -120,7 +131,8 @@ export CAPTUREFORGE_SIF=/shared/apps/captureforge/captureforge.sif
 export CAPTUREFORGE_REFS=/shared/refs/captureforge/GRCh38
 # engine defaults to singularity; an Apptainer site sets:
 #   export CAPTUREFORGE_ENGINE=apptainer
-# bind refs that live outside $HOME/CWD into task containers (forwarded as --bind_paths):
+# bind refs that live outside $HOME/CWD into task containers (the wrapper exports
+# SINGULARITY_BIND/APPTAINER_BIND and passes --bind_paths from this):
 export CAPTUREFORGE_BIND=/hpc        # [cluster-specific] refs/install root
 captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue>
 ```

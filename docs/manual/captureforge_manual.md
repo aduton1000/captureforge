@@ -218,8 +218,10 @@ change.
   captureforge-run -params-file my_panel.params.yaml     # add --slurm_partition/account only if needed
   ```
 
-  (`CAPTUREFORGE_BIND` is forwarded as `--bind_paths`; it makes referenced-in-place refs under `/hpc` — like the
-  `--specificity_db` index — visible inside task containers, which otherwise auto-mount only `$HOME`/`/tmp`/CWD.)
+  (`CAPTUREFORGE_BIND` makes referenced-in-place refs under `/hpc` — like the `--specificity_db` index — visible
+  inside task containers, which otherwise auto-mount only `$HOME`/`/tmp`/CWD. The wrapper exports
+  `SINGULARITY_BIND`/`APPTAINER_BIND` from it (whitelisted so they survive Nextflow's env scrub) and also passes
+  `--bind_paths`.)
 
   On a site that **does** have Lmod, the same wrapper is reachable via a module instead:
 
@@ -594,9 +596,10 @@ captureforge run \
     --rsid_bed $CF_REFS/anchors.rsid.bed \
     --slurm_partition <queue> \
     --scratch_dir $TMPDIR \
-    --bind_paths /hpc \
     --container_image /hpc/opt/captureforge/images/captureforge.sif \
     --outdir results
+# bind refs that live outside $HOME/CWD (e.g. the --specificity_db index under /hpc):
+export SINGULARITY_BIND=/hpc      # APPTAINER_BIND=/hpc on an Apptainer site; [cluster-specific]
 ```
 
 > **`--container_image` (required with any engine).** Sets `process.container` so every task runs *inside* the
@@ -606,11 +609,18 @@ captureforge run \
 > (`/hpc/opt/...` `[cluster-specific]`) or an image tag for docker; best set as `container_image:` in the params
 > file. Bare `-profile test` (no engine) still runs natively and needs no image.
 
-> **`--bind_paths` (container bind mounts).** Singularity/Apptainer auto-mount only `$HOME`, `/tmp`, and the CWD.
-> The specificity index (`--specificity_db`) is **referenced in place, not staged** — so when references live
-> outside those (e.g. `/hpc/opt/...` `[cluster-specific]`) you must bind that root in, or in-container tasks fail
-> with "No such file or directory". Set `--bind_paths /hpc` (or your refs/install root); the default is empty
-> (no bind). With the wrapper, `export CAPTUREFORGE_BIND=/hpc` does the same.
+> **Container bind mounts.** Singularity/Apptainer auto-mount only `$HOME`, `/tmp`, and the CWD. The specificity
+> index (`--specificity_db`) is **referenced in place, not staged** — so when references live outside those (e.g.
+> `/hpc/opt/...` `[cluster-specific]`) you must bind that root in, or in-container tasks fail with "No such file or
+> directory". Two ways (use either; default is no bind):
+> - **`export SINGULARITY_BIND=/hpc`** (`APPTAINER_BIND` on an Apptainer site) — **recommended**. Nextflow
+>   scrubs the task env, but the engine profiles **whitelist** these vars so they survive and the engine honors
+>   them.
+> - **`--bind_paths /hpc`** (or `bind_paths:` in the params file) — applied per task via
+>   `process.containerOptions` (a closure resolved after the param merges; an engine `runOptions` ternary would
+>   not work, as it evaluates before the merge).
+>
+> The `captureforge-run` wrapper sets both from `export CAPTUREFORGE_BIND=/hpc`.
 
 > On a **deployed** cluster the `captureforge-run` wrapper resolves the install path, the container image, and
 > the `hpc_slurm,<engine>` profile (default `singularity`) from environment variables — so the invocation
