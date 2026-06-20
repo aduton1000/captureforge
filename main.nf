@@ -33,6 +33,16 @@ workflow {
                 "    docker:                 --container_image captureforge:0.1.0\n" +
                 "  (or omit the engine profile to run natively on the host)."
     }
+    // Guard: under the SLURM executor (profile hpc_slurm), submitting with no
+    // partition relies on a default that may not exist on this cluster (e.g. the
+    // old 'normal' default is rejected where the queue is 'global'). Fail loudly
+    // rather than letting sbatch reject every job. Only fires for hpc_slurm — local
+    // and test have no partition. (Short-circuits before reading slurm_partition.)
+    if (workflow.profile.tokenize(',').contains('hpc_slurm') && !params.slurm_partition) {
+        exit 1, "ERROR: SLURM executor selected but --slurm_partition is unset. Set it to your cluster's partition,\n" +
+                "  e.g. --slurm_partition global  (or set slurm_partition: <queue> in your params file).\n" +
+                "  Find valid partitions with: sinfo -s"
+    }
     if (!params.input)         { exit 1, "ERROR: --input gene list is required" }
     if (!params.genome_fasta)  { exit 1, "ERROR: --genome_fasta is required" }
     if (!params.gtf)           { exit 1, "ERROR: --gtf is required" }

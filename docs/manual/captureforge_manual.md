@@ -221,9 +221,13 @@ change.
   singularity exec /hpc/opt/captureforge/captureforge.sif ps --version      # procps present
   ```
 
-- **SLURM is global** here — **no special partition is required by default**. Keep the partition and
-  account as **overridable parameters** (`--slurm_partition`, and an account via `--slurm_queue_opts`/
-  `clusterOptions` in `conf/hpc_slurm.config`) so users on partitioned sites can set them.
+- **SLURM partition is required** — there is **no safe default** (clusters differ: `global`, `compute`,
+  `batch`, `normal`, …). Set `slurm_partition` (in the params file or `--slurm_partition <queue>`); discover
+  yours with `sinfo -s`. If it is unset under the `hpc_slurm` profile the run **fails loudly before any job is
+  submitted** (rather than silently submitting to a non-existent partition — e.g. an old `normal` default is
+  rejected with `sbatch: error: invalid partition specified` where the queue is `global`). An account/QOS goes
+  via `slurm_queue_opts`/`clusterOptions` in `conf/hpc_slurm.config`. This facility's partition is `global`
+  (an example — yours may differ).
 
 - **Access mechanism:** the `captureforge-run` wrapper. **This cluster has no module system**, so the wrapper
   goes on a shared `PATH` and resolves the install root, `.sif`, and refs from environment variables (with

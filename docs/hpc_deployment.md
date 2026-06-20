@@ -145,8 +145,10 @@ export SINGULARITY_BIND=/hpc      # APPTAINER_BIND=/hpc on an Apptainer site; [c
 > Either works; you don't need both. Default is empty (no bind). The `captureforge-run` wrapper sets both from
 > `CAPTUREFORGE_BIND`.
 
-Tune in `conf/hpc_slurm.config`: `slurm_partition` (your queue — e.g. `global` on some clusters, `normal` is
-the placeholder default; always overridable with `--slurm_partition <queue>`), `slurm_queue_opts`,
+Tune in `conf/hpc_slurm.config`: `slurm_partition` (**required** for SLURM runs — there is no safe default;
+discover yours with `sinfo -s`, e.g. `global` on some clusters, and set `--slurm_partition <queue>` or
+`slurm_partition: <queue>` in the params file. If it is unset the run **fails loudly** before any job is
+submitted, rather than silently submitting to a non-existent partition), `slurm_queue_opts`,
 `scratch_dir`, `max_cpus/memory/time`, `container_cache` (the shared image cache; `apptainer_cache` remains a
 back-compat alias). Heavy steps (`label index` = specificity, re-tiling) get a large slot (16 cpu / 64 GB).
 

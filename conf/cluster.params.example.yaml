@@ -50,10 +50,13 @@ container_image: /hpc/opt/captureforge/captureforge.sif                      # [
 bind_paths: /hpc                                                             # [EDIT or omit if using wrapper]
 
 # ---- SLURM ------------------------------------------------------------------
-# Put the queue here so it is NOT a required CLI flag (override with
-# --slurm_partition <queue>). slurm_queue_opts → extra sbatch/clusterOptions
+# slurm_partition is REQUIRED for SLURM runs — there is NO safe default (clusters
+# differ: global, compute, batch, normal, …). The run fails loudly if it is unset
+# (no silent submit to a non-existent partition). Find yours with: sinfo -s
+# `global` below is only an EXAMPLE — replace it. Override per-run with
+# --slurm_partition <queue>. slurm_queue_opts → extra sbatch/clusterOptions
 # (e.g. an account: "--account=myproj").
-slurm_partition: global                                                      # [EDIT] your queue/partition
+slurm_partition: global                                                      # [EDIT — REQUIRED] your partition (sinfo -s); no default
 slurm_queue_opts: ''                                                         # [EDIT/optional] e.g. --account=...
 # scratch_dir: /tmp                                                          # [optional] per-task scratch
 
