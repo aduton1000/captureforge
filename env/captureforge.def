@@ -15,8 +15,16 @@ From: mambaorg/micromamba:1.5.8
     echo 'export PATH=/opt/conda/bin:$PATH' >> $SINGULARITY_ENVIRONMENT
 
 %environment
+    # Tools install into BASE conda (/opt/conda) via `micromamba install -n base`
+    # in %post — put its bin FIRST so `singularity exec <img> samtools` resolves by
+    # bare name and does not depend on the host PATH leaking in.
     export PATH=/opt/conda/bin:$PATH
-    export LC_ALL=C
+    # UTF-8 locale silences locale warnings from the bioinformatics CLIs.
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    # Container FS is read-only at run time; give matplotlib a writable cache dir
+    # (otherwise it warns about a read-only /root/.config).
+    export MPLCONFIGDIR=/tmp/matplotlib
 
 %test
     bedtools --version
