@@ -33,15 +33,22 @@ def read_symbols(path: str) -> list[str]:
     return out
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="captureforge panel",
-                                 description="Scaffold an editable CaptureForge spec CSV from bare symbols.")
-    ap.add_argument("symbols", help="plain-text file, one gene symbol per line")
-    ap.add_argument("-o", "--output", default="panel.spec.csv")
+    ap = argparse.ArgumentParser(
+        prog="captureforge panel",
+        description="Scaffold an editable CaptureForge spec CSV from bare gene symbols.",
+        epilog="Provenance: this is a one-off authoring step, BEFORE a run; its inputs "
+               "are not pipeline params. Edit the emitted CSV, then pass it as "
+               "`captureforge run --input <csv>`. Typical: "
+               "`captureforge panel genes.txt -o my_panel.spec.csv`.")
+    ap.add_argument("symbols", help="[per-run] REQUIRED plain-text file, one gene symbol per line")
+    ap.add_argument("-o", "--output", default="panel.spec.csv",
+                    help="[optional] output spec CSV (default: panel.spec.csv)")
     ap.add_argument("--default-classes", default="coding,promoter",
-                    help="classes applied to every gene by default (coding always implied)")
-    ap.add_argument("--gtf", help="(optional) GTF for track-based cnv/str suggestions")
-    ap.add_argument("--segdups", help="(optional) segmental-dup BED → suggest cnv")
-    ap.add_argument("--rmsk", help="(optional) tandem-repeat BED → suggest str")
+                    help="[optional] classes applied to every gene by default "
+                         "(default: coding,promoter; coding always implied)")
+    ap.add_argument("--gtf", help="[optional] GTF for track-based cnv/str suggestions (default: none)")
+    ap.add_argument("--segdups", help="[optional] segmental-dup BED → suggest cnv class (default: none)")
+    ap.add_argument("--rmsk", help="[optional] tandem-repeat BED → suggest str class (default: none)")
     args = ap.parse_args(argv)
 
     genes = read_symbols(args.symbols)

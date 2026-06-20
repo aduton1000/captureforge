@@ -8,9 +8,17 @@
 #  reference makes genes in the MHC and other alt-haplotype regions look
 #  non-specific against their own alternate-haplotype copies (false off-targets).
 #
+#  Provenance: a one-off [site] setup step, run ONCE per cluster/genome (not per run).
+#  The prefix it writes becomes the `specificity_db` param in your params file.
+#
 #  Usage:
 #    bin/build_specificity_index.sh --fasta GRCh38.primary.fa --aligner blast   --out refs/grch38_noalt
 #    bin/build_specificity_index.sh --fasta GRCh38.primary.fa --aligner bowtie2 --out refs/grch38_bt2
+#  Options:
+#    --fasta PATH    [required] no-alt primary-assembly FASTA (same cleaned FASTA as genome_fasta)
+#    --aligner NAME  [optional] blast (default) | bowtie2 | bwa
+#    --out PREFIX    [required] output index/db prefix (→ set as specificity_db)
+#    THREADS=N (env) [optional] threads for bowtie2-build (default 4)
 # ═══════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 FASTA=""; ALIGNER="blast"; OUT=""

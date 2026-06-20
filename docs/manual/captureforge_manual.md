@@ -569,36 +569,111 @@ Container-engine profiles `conda`, `docker`, `apptainer`, and `singularity` are 
 `-profile hpc_slurm,apptainer`. `singularity` and `apptainer` differ only in the engine toggle and run the
 same `.sif` image.
 
-## Key parameters (real defaults from `nextflow.config`)
+## Parameter reference (real defaults from `nextflow.config` / `conf/`)
 
-| Param | Default | Meaning |
+The single most useful question facing a long run command is *"do I provide this, or is it already set up?"*
+CaptureForge answers it with a **three-layer model**, so the validated run command is short — the values live in
+files you set up once:
+
+1. **Env file** (`share/captureforge-env.sh`, sourced once from `~/.bashrc`) — install-time site wiring:
+   `CAPTUREFORGE_HOME/_SIF/_REFS/_BIND/_ENGINE`. Feeds `--container_image`, `--bind_paths`, and the profile.
+2. **Params file** (`-params-file site.params.yaml`) — set once per cluster: genome, GTF, specificity index,
+   binds, partition.
+3. **Per-run flags** — what changes every run: `--input` and `--outdir` (plus an optional `--panel_name`).
+
+Every parameter below carries a **provenance** tag answering that question:
+
+| Tag | Who sets it / when |
+|---|---|
+| **[install]** | once, in the site env file (sourced from `~/.bashrc`); not typed per run |
+| **[site]** | once per cluster, in the params file; users inherit it via `-params-file` |
+| **[per-run]** | you provide it every run (the minimal set) |
+| **[optional]** | has a sane default; set only to override |
+| **[class-dependent]** | only needed if the panel uses that design class (absent → feature skipped, **no error**) |
+
+`captureforge run` is a thin wrapper over `nextflow run main.nf` — only `--pipeline` and `--print-cmd` are
+argparse-owned; every parameter below is a Nextflow param forwarded verbatim (passthrough) and overridable with
+`--<param> value` or in the params file. Defaults shown are the **actual** declared defaults — spot-checked
+against the code, none invented.
+
+### Required & references
+
+| Parameter | What it is | Required? | Default | Provenance |
+|---|---|---|---|---|
+| `input` | gene list / CSV-TSV spec / `.xlsx` (auto-detected) | **Yes** (`main.nf` exits if unset) | `null` | [per-run] |
+| `genome_fasta` | no-alt primary-assembly FASTA (cleaned headers) | **Yes** (exits if unset) | `null` | [site] |
+| `gtf` | Ensembl GTF (gene models) | **Yes** (exits if unset) | `null` | [site] |
+| `specificity_db` | aligner index / BLAST db prefix (**absolute**, no-alt) | In practice yes — Stage 4/6 fail without it; `main.nf` **warns** (does not exit) | `null` | [site] |
+| `specificity_aligner` | `bowtie2` \| `bwa` \| `blast` | No | `bowtie2` | [site] |
+| `genome_build` | reference-build label | No | `GRCh38` | [optional] |
+| `ensembl_release` | Ensembl release for provenance | No | `112` | [optional] |
+| `excel_sheet` | sheet name (only when `input` is `.xlsx`) | No | `Candidate Panel (expanded)` | [optional] |
+| `mane_gff` | MANE Select GFF3 (canonical pick) | No | `null` | [optional] |
+| `regulatory_gff` | Ensembl Regulatory Build / cCREs | Only for **regulatory** class | `null` | [class-dependent] |
+| `rmsk_bed` | UCSC RepeatMasker → Stage-2 masking | Only if repeat masking / **str** used | `null` | [class-dependent] |
+| `simplerepeat_bed` | UCSC simpleRepeat → STR-core removal | Only for **str** class | `null` | [class-dependent] |
+| `segdups_bed` | UCSC genomicSuperDups → cnv masking | Only for **cnv** class | `null` | [class-dependent] |
+| `dbsnp_vcf` | dbSNP VCF for rsID anchors | Only for **anchor** class | `null` | [class-dependent] |
+| `rsid_bed` | pre-resolved rsID BED (`resolve_rsids.py`) | Only for **anchor** class | `null` | [class-dependent] |
+| `refs_provenance` | `refs.provenance.json` folded into outputs | No | `null` | [optional] |
+
+> **How required-ness was determined (from the code, not assumption):** `input`, `genome_fasta`, `gtf` each have
+> an explicit `exit 1` guard in `main.nf` → hard-required. `specificity_db` only triggers a `log.warn` (Stages
+> 4/6 then fail downstream) → *required in practice, not enforced at launch*. The optional refs
+> (`rsid_bed`, `rmsk_bed`, `simplerepeat_bed`, `segdups_bed`, `dbsnp_vcf`, `regulatory_gff`) flow through the
+> `optfile()` resolver in `subworkflows/captureforge.nf`: when absent they become a `NO_<slot>` sentinel, and the
+> consuming module (`masking.nf`, `target_definition.nf`) **drops the corresponding CLI flag** — so the feature
+> is silently skipped, never an error. They matter only when the panel actually uses that design class.
+
+### Container & HPC
+
+| Parameter | What it is | Required? | Default | Provenance |
+|---|---|---|---|---|
+| `container_image` | image every task runs inside (`.sif` path \| docker tag) | **Yes when a container engine is enabled** (`main.nf` exits otherwise); not for native runs | `''` | [site] (env-supplied) |
+| `bind_paths` | host path(s) bound into containers for in-place refs | Needed when refs live outside `$HOME`/`/tmp`/CWD | `''` | [site] (env-supplied) |
+| `slurm_partition` | SLURM queue | **Yes under `-profile hpc_slurm`** (`main.nf` exits if unset — no safe default) | `null` | [site] |
+| `slurm_queue_opts` | extra `sbatch`/`clusterOptions` (e.g. `--account=…`) | No | `''` | [optional] |
+| `scratch_dir` | per-task scratch under SLURM | No | `/tmp` | [optional] |
+| `container_cache` | shared engine image cache (`hpc_slurm`) | No | `$HOME/.captureforge/container_cache` | [install] |
+| `publish_mode` | `publishDir` mode | No | `copy` | [optional] |
+| `max_cpus` / `max_memory` / `max_time` | per-profile resource ceilings | No | profile-set (`local` 8/24 GB/48 h; `hpc_slurm` 32/128 GB/72 h; `test` 4/8 GB/2 h) | [optional] |
+
+### Design thresholds (all [optional])
+
+| Parameter | What it is | Default |
 |---|---|---|
-| `bait_len` | `120` | bait length (nt) |
-| `canonical_source` | `mane` | transcript pick: `mane` → `ensembl_canonical` → `longest` fallback |
-| `splice_flank` | `15` | bp added around each exon |
-| `promoter_upstream` / `promoter_downstream` | `2000` / `200` | TSS−2000 .. TSS+200 |
-| `anchor_flank` | `150` | bp each side of an rsID anchor |
-| `default_classes` | `[coding, promoter]` | applied to a bare symbol list |
-| `tiling` | per-class `density` / `step_frac` / `even` | tiling policy (coding ½-step, promoter/reg ⅓, cnv even, str ⅓ flanks) |
-| `specificity_aligner` | `bowtie2` | `bowtie2` \| `bwa` \| `blast` |
-| `specificity_db` | `null` | aligner index / BLAST db prefix (**absolute path**, no-alt) |
-| `offtarget_min_identity` | `0.90` | secondary-hit identity threshold |
-| `offtarget_min_lenfrac` | `0.50` | secondary-hit length fraction |
-| `offtarget_max_hits` | `1` | tolerated off-target hits before reject |
-| `gc_min` / `gc_max` | `0.25` / `0.70` | GC window (fraction) |
-| `gc_max_promoter` | `0.80` | relaxed upper GC for promoter/regulatory |
-| `homopolymer_max` | `10` | max homopolymer run |
-| `tm_min` / `tm_max` | `60.0` / `90.0` | nearest-neighbour Tm window (°C) |
-| `retile_max_passes` | `3` | max gap re-tiling passes |
-| `coverage_target` | `0.95` | target fraction of **masked** target to cover |
-| `bait_format` | `ivt_rna` | `dna_pool` \| `ivt_rna` \| `ready_to_use` |
-| `synth_max_len` | `170` | vendor synthesis length ceiling (nt) |
-| `per_oligo_price` | `0.00200` | USD per oligo (**placeholder**) |
-| `pool_tiers` | `[12000, 92000, 244000]` | oligo-pool size tiers |
-| `outdir` | `results` | output directory |
+| `bait_len` | bait length (nt) | `120` |
+| `canonical_source` | transcript pick: `mane` → `ensembl_canonical` → `longest` | `mane` |
+| `splice_flank` | bp added around each exon | `15` |
+| `promoter_upstream` / `promoter_downstream` | TSS−2000 .. TSS+200 | `2000` / `200` |
+| `anchor_flank` | bp each side of an rsID anchor | `150` |
+| `default_classes` | classes applied to a bare symbol list | `[coding, promoter]` |
+| `tiling` | per-class `density` / `step_frac` / `even` map | coding ½-step, promoter/reg ⅓, cnv even, str ⅓ flanks |
+| `offtarget_min_identity` | secondary-hit identity threshold | `0.90` |
+| `offtarget_min_lenfrac` | secondary-hit length fraction | `0.50` |
+| `offtarget_max_hits` | tolerated off-target hits before reject | `1` |
+| `gc_min` / `gc_max` | GC window (fraction) | `0.25` / `0.70` |
+| `gc_max_promoter` | relaxed upper GC for promoter/regulatory | `0.80` |
+| `homopolymer_max` | max homopolymer run | `10` |
+| `tm_min` / `tm_max` | nearest-neighbour Tm window (°C) | `60.0` / `90.0` |
+| `retile_max_passes` | max gap re-tiling passes | `3` |
+| `coverage_target` | target fraction of **masked** target to cover | `0.95` |
+| `bait_format` | `dna_pool` \| `ivt_rna` \| `ready_to_use` | `ivt_rna` |
+| `synth_max_len` | vendor synthesis length ceiling (nt) | `170` |
+| `per_oligo_price` | USD per oligo (**placeholder estimate**) | `0.00200` |
+| `pool_tiers` | oligo-pool size tiers | `[12000, 92000, 244000]` |
 
-> Some advanced parameters are present for documentation but are **not currently wired** to a stage — see
-> *Troubleshooting → Known doc-vs-behaviour notes*.
+### Output
+
+| Parameter | What it is | Required? | Default | Provenance |
+|---|---|---|---|---|
+| `panel_name` | label written on outputs | No | `captureforge_panel` | [per-run] / [optional] |
+| `outdir` | results directory | No (but you usually set it) | `results` | [per-run] |
+
+> A few advanced params (`genmap_*`, `dust_threshold`, `deltaG_min` / `use_vienna`, `t7_promoter`,
+> `pcr_handle_5/3`, `bait_strand`, `tracks_per_page`, `covered_vs_raw_min`) are declared in `nextflow.config`;
+> some are present for documentation and **not currently wired** to a stage — see *Troubleshooting → Known
+> doc-vs-behaviour notes*.
 
 ---
 
@@ -651,28 +726,44 @@ partitions with `sinfo -s`. If it is unset under `hpc_slurm`, the run fails loud
 rather than submitting to a non-existent partition. An account or QOS goes via `slurm_queue_opts` /
 `clusterOptions` in `conf/hpc_slurm.config`.
 
+### The short form and the expanded form are the *same run*
+
+The validated deployment runs via a **short** command because the env file and params file already carry the
+site values. The long command below is that exact run with every inherited default written out explicitly — an
+*override / debugging* form, **not** what you type each run. The same job is simply:
+
+```bash
+captureforge-run -params-file site.params.yaml --input panel.txt --outdir results
+```
+
 Without the wrapper — or to see what it expands to — call `captureforge run` directly, composing `hpc_slurm`
 with your engine (`hpc_slurm,singularity` on SingularityCE clusters, `hpc_slurm,apptainer` on Apptainer) and
-pointing `--pipeline` at the installed `main.nf`:
+pointing `--pipeline` at the installed `main.nf`. Each flag is annotated with **who normally provides it**, so
+you can see which lines are inherited (and therefore omittable) versus the genuine per-run inputs:
 
 ```bash
 captureforge run \
-    --pipeline /hpc/opt/captureforge/main.nf \
-    -profile hpc_slurm,singularity \
-    -params-file site.params.yaml \
-    --genome_fasta $CF_REFS/Homo_sapiens.GRCh38.dna.primary_assembly.clean.fa \
-    --gtf $CF_REFS/GRCh38.112.gtf.gz \
-    --specificity_db $CF_REFS/grch38_noalt_bt2 \
-    --specificity_aligner bowtie2 \
-    --rmsk_bed $CF_REFS/rmsk.GRCh38.txt.gz \
-    --simplerepeat_bed $CF_REFS/simpleRepeat.GRCh38.txt.gz \
-    --rsid_bed $CF_REFS/anchors.rsid.bed \
-    --slurm_partition <queue> \
-    --scratch_dir $TMPDIR \
-    --container_image /hpc/opt/captureforge/captureforge.sif \
-    --bind_paths /hpc \
-    --outdir results
+    --pipeline /hpc/opt/captureforge/main.nf \                                  # [install] env: CAPTUREFORGE_HOME
+    -profile hpc_slurm,singularity \                                           # [install] env: CAPTUREFORGE_ENGINE/_PROFILE
+    -params-file site.params.yaml \                                            # [site]    the file carrying all of the below
+    --genome_fasta $CF_REFS/Homo_sapiens.GRCh38.dna.primary_assembly.clean.fa \ # [site]    params file
+    --gtf $CF_REFS/GRCh38.112.gtf.gz \                                         # [site]    params file
+    --specificity_db $CF_REFS/grch38_noalt_bt2 \                               # [site]    params file
+    --specificity_aligner bowtie2 \                                           # [site]    params file (default bowtie2)
+    --rmsk_bed $CF_REFS/rmsk.GRCh38.txt.gz \                                   # [class-dependent] str/masking; params file
+    --simplerepeat_bed $CF_REFS/simpleRepeat.GRCh38.txt.gz \                   # [class-dependent] str core; params file
+    --rsid_bed $CF_REFS/anchors.rsid.bed \                                     # [class-dependent] anchor class; params file
+    --slurm_partition <queue> \                                               # [site]    params file (REQUIRED under hpc_slurm)
+    --scratch_dir $TMPDIR \                                                    # [optional] default /tmp
+    --container_image /hpc/opt/captureforge/captureforge.sif \                 # [site/install] env: CAPTUREFORGE_SIF
+    --bind_paths /hpc \                                                        # [site/install] env: CAPTUREFORGE_BIND
+    --input panel.txt \                                                        # [per-run] YOU provide this every run
+    --outdir results                                                          # [per-run] YOU provide this every run
 ```
+
+Reading the annotations top-to-bottom: the `[install]` lines come from the sourced env file, the `[site]` and
+`[class-dependent]` lines from `-params-file site.params.yaml`, and only the two `[per-run]` lines
+(`--input`, `--outdir`) are genuinely yours each run — which is why the short form above is the norm.
 
 > **A container engine requires `--container_image`.** It sets `process.container` so every task runs *inside*
 > the `.sif` (including the viz stages); enabling an engine without it makes Nextflow run tasks on the host with

@@ -79,18 +79,97 @@ def _warn_env_if_local(passthrough):
         "  Proceeding anyway (use a container engine, e.g. -profile <exec>,docker, to avoid this).\n")
 
 
+# Pipeline parameters are declared in Nextflow (nextflow.config / conf/), NOT in
+# argparse — `captureforge run` forwards them verbatim. argparse therefore can't own
+# their --help, so we document them here (printed as the `run` epilog) WITH provenance
+# so a reader knows, per flag, whether they set it or it is already wired.
+#   [install]         once in the site env file (CAPTUREFORGE_HOME/_SIF/_REFS/_BIND/_ENGINE)
+#   [site]            once per cluster in the params file (-params-file)
+#   [per-run]         you provide every run (the minimal set)
+#   [optional]        has a sane default; set only to override (default shown)
+#   [class-dependent] only needed if the panel uses that design class
+# Defaults below are the ACTUAL nextflow.config / conf defaults (no invented values).
+PASSTHROUGH_HELP = """\
+Nextflow pipeline parameters (forwarded to `nextflow run`; declared in
+nextflow.config / conf/, so they are passthrough — not listed under "options" above).
+Provenance: [install]=env file once · [site]=params file once per cluster ·
+[per-run]=every run · [optional]=defaulted override · [class-dependent]=only for that class.
+
+  -profile NAMES        [per-run] execution+packaging, composed: test|local|hpc_slurm
+                        with conda|docker|apptainer|singularity (e.g. local,conda)
+  -params-file FILE     [site] YAML carrying the site values (genome, index, binds, …)
+
+ references
+  --input PATH          [per-run] REQUIRED gene list / CSV-TSV spec / .xlsx (auto-detected)
+  --genome_fasta PATH   [site] REQUIRED no-alt primary-assembly FASTA (cleaned headers)
+  --gtf PATH            [site] REQUIRED Ensembl GTF (gene models)
+  --specificity_db PFX  [site] aligner index / BLAST db prefix (absolute, no-alt). No
+                        hard default — Stage 4/6 fail without it (main.nf warns)
+  --specificity_aligner X [site] bowtie2 (default) | bwa | blast
+  --genome_build STR    [optional] default GRCh38 (label only)
+  --ensembl_release N   [optional] default 112
+  --mane_gff PATH       [optional] MANE Select GFF3 for canonical pick (default: none)
+  --regulatory_gff PATH [class-dependent] Ensembl Regulatory Build — regulatory class
+  --rmsk_bed PATH       [class-dependent] UCSC RepeatMasker — Stage-2 masking / str class
+  --simplerepeat_bed PATH [class-dependent] UCSC simpleRepeat — STR-core removal
+  --segdups_bed PATH    [class-dependent] UCSC genomicSuperDups — cnv masking
+  --dbsnp_vcf PATH      [class-dependent] dbSNP VCF for rsID anchors (anchor class)
+  --rsid_bed PATH       [class-dependent] pre-resolved rsID BED (anchor class)
+                        (optional refs absent → that feature is skipped, no error)
+
+ container / HPC
+  --container_image X   [site] image every task runs in (.sif path | docker tag).
+                        REQUIRED when a container engine is enabled (else fails loudly);
+                        the wrapper supplies it from CAPTUREFORGE_SIF
+  --bind_paths PATHS    [site] host path(s) to bind into containers for in-place refs
+                        (e.g. the index). Default: none. Comma-separate multiple roots
+  --slurm_partition Q   [site] SLURM queue. REQUIRED under -profile hpc_slurm (no safe
+                        default; fails loudly if unset). Find one with `sinfo -s`
+  --slurm_queue_opts S  [optional] extra sbatch/clusterOptions (e.g. --account=...)
+  --scratch_dir PATH    [optional] per-task scratch under SLURM (default /tmp)
+
+ design thresholds (all [optional]; defaults shown)
+  --bait_len N (120)  --splice_flank N (15)  --canonical_source X (mane)
+  --promoter_upstream N (2000)  --promoter_downstream N (200)  --anchor_flank N (150)
+  --gc_min F (0.25)  --gc_max F (0.70)  --gc_max_promoter F (0.80)
+  --tm_min F (60.0)  --tm_max F (90.0)  --homopolymer_max N (10)
+  --offtarget_min_identity F (0.90)  --offtarget_min_lenfrac F (0.50)  --offtarget_max_hits N (1)
+  --retile_max_passes N (3)  --coverage_target F (0.95)
+  --bait_format X (ivt_rna: dna_pool|ivt_rna|ready_to_use)  --synth_max_len N (170)
+  --per_oligo_price F (0.00200)  --pool_tiers LIST ([12000,92000,244000])
+
+ output
+  --panel_name STR      [per-run/optional] label on outputs (default captureforge_panel)
+  --outdir PATH         [per-run] results directory (default results)
+
+See `params.example.yaml`, `conf/cluster.params.example.yaml`, and the manual's
+Parameter Reference for the full table. Prefers the vendored .tools/nextflow;
+falls back to a system nextflow on PATH."""
+
+
 # ----------------------------------------------------------------- subcommands
 def cmd_run(rest):
     ap = argparse.ArgumentParser(
         prog="captureforge run", allow_abbrev=False, add_help=True,
-        description="Run the CaptureForge design pipeline. Thin wrapper over "
-                    "`nextflow run main.nf`; all other flags (-profile, -params-file, "
-                    "-resume, --<param>) pass straight through to Nextflow.",
-        epilog="Prefers the vendored .tools/nextflow; falls back to system nextflow.")
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Run the CaptureForge design pipeline. Thin wrapper over "
+            "`nextflow run main.nf`; -profile, -params-file, -resume and every "
+            "--<param> pass straight through to Nextflow.\n\n"
+            "Most options are set ONCE (env file + params file), so a typical run is short:\n"
+            "    captureforge run -profile local,conda -params-file params.yaml \\\n"
+            "        --input panel.txt --outdir results\n"
+            "On a deployed cluster the wrapper makes it shorter still:\n"
+            "    captureforge-run -params-file site.params.yaml --input panel.txt --outdir results\n"
+            "The flags below OVERRIDE params-file values; you rarely type them all."),
+        epilog=PASSTHROUGH_HELP)
     ap.add_argument("--pipeline", metavar="PATH",
-                    help="pipeline script to run (default: the repo's main.nf)")
+                    help="[optional] pipeline script to run "
+                         "(default: this repo's main.nf; point at the installed "
+                         "main.nf for an out-of-tree deploy)")
     ap.add_argument("--print-cmd", action="store_true",
-                    help="print the resolved command and exit (do not execute)")
+                    help="[optional] print the resolved nextflow command and exit "
+                         "(do not execute) — same as setting CAPTUREFORGE_DRY_RUN")
     known, passthrough = ap.parse_known_args(rest)
 
     nf, kind = _resolve_nextflow()
