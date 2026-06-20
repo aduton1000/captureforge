@@ -104,7 +104,8 @@ under `results/<outdir>/stageN_*/`, and emits a `stageN_summary.json` of metrics
 | viz | `make_figures.py`, `make_dashboard.py` | QC + BEDs | `figures/*.png/svg`, `qc_dashboard.html` |
 
 The pipeline is driven by **profiles** (`-profile test|local|hpc_slurm`) that select the executor and
-resources, composed with a **packaging** profile (`conda|docker|apptainer` = how dependencies are provided).
+resources, composed with a **packaging** profile (`conda|docker|apptainer|singularity` = how dependencies are
+provided).
 The comma composes them: an **execution** profile (`local` = this machine — any Linux/macOS, Windows via WSL2;
 `hpc_slurm` = a cluster) plus a packaging engine, e.g. `-profile local,conda`. An interactive DAG of the
 run is also written to `results/<outdir>/pipeline_info/dag.html`, alongside `report.html`, `timeline.html`,
@@ -174,12 +175,14 @@ A laptop install is complete at this point: clone the repo, build the env (or im
 
 ## Shared HPC install (this cluster as the worked example)
 
-For a multi-user cluster you install **once, centrally**, so anyone can `module load captureforge` and run
-from any node. The commands below use **this facility's cluster** as the concrete example; paths marked
-**[cluster-specific]** are what other sites change.
+For a multi-user cluster you install **once, centrally**, so anyone can put the `captureforge-run` wrapper on
+their `PATH` (or `module load captureforge` where Lmod exists) and run from any node. The commands below use
+**this facility's cluster** as the concrete example; paths marked **[cluster-specific]** are what other sites
+change.
 
-- **Cluster:** Ubuntu 24.04, 4 compute nodes. The install must be reachable **cluster-wide regardless of
-  which node** a job lands on — so the environment, container, and references all live on shared storage.
+- **Cluster:** Ubuntu 24.04 x86-64, SingularityCE 4.1.1 (**no `apptainer` binary**), **no module system**
+  (no Lmod), SLURM partition `global`. The install must be reachable **cluster-wide regardless of which node**
+  a job lands on — so the environment, container, and references all live on shared storage.
 - **Shared conda environment** — source the cluster conda, then create the env under the shared envs
   directory so all four nodes see it:
 
@@ -191,29 +194,45 @@ from any node. The commands below use **this facility's cluster** as the concret
 
   (Linux is native here — **no `CONDA_SUBDIR`/Rosetta**; that is a macOS-only step.)
 
-- **Apptainer image** (native linux; Docker is usually disallowed on shared clusters):
+- **Container image** (native linux; Docker is usually disallowed on shared clusters). One `.sif` runs under
+  either engine — this cluster has SingularityCE, so build with `singularity`:
 
   ```bash
-  apptainer build /hpc/opt/conda/envs/captureforge.sif env/captureforge.def   # [cluster-specific] path
+  # SingularityCE (this cluster — no `apptainer` binary):
+  sudo singularity build /hpc/opt/captureforge/captureforge.sif env/captureforge.def   # [cluster-specific] path
+  #   unprivileged alternative:  singularity build --fakeroot captureforge.sif env/captureforge.def
+  # Apptainer sites instead:     apptainer build captureforge.sif env/captureforge.def
   ```
 
 - **SLURM is global** here — **no special partition is required by default**. Keep the partition and
   account as **overridable parameters** (`--slurm_partition`, and an account via `--slurm_queue_opts`/
   `clusterOptions` in `conf/hpc_slurm.config`) so users on partitioned sites can set them.
 
-- **Access mechanism:** an **Apptainer image + Lmod modulefile + the `captureforge-run` wrapper**:
+- **Access mechanism:** the `captureforge-run` wrapper. **This cluster has no module system**, so the wrapper
+  goes on a shared `PATH` and resolves the install root, `.sif`, and refs from environment variables (with
+  install-relative defaults) — no `module load` needed:
+
+  ```bash
+  export PATH=/hpc/opt/captureforge/share/bin:$PATH      # [cluster-specific] install root
+  captureforge-run -params-file my_panel.params.yaml     # add --slurm_partition/account only if needed
+  ```
+
+  On a site that **does** have Lmod, the same wrapper is reachable via a module instead:
 
   ```bash
   module use /hpc/opt/captureforge/share/modulefiles   # [cluster-specific] install root
   module load captureforge/0.1.0
-  captureforge-run -params-file my_panel.params.yaml   # add --slurm_partition/account only if needed
+  captureforge-run -params-file my_panel.params.yaml
   ```
 
-  - `share/modulefiles/captureforge/0.1.0.lua` — Lmod modulefile stub (edit `install_root` / `refs_root`).
-  - `share/bin/captureforge-run` — wrapper that forwards to `nextflow run … -profile hpc_slurm,apptainer`.
+  - `share/bin/captureforge-run` — wrapper that forwards to `nextflow run … -profile hpc_slurm,<engine>`,
+    defaulting to `singularity` (set `CAPTUREFORGE_ENGINE=apptainer` or `CAPTUREFORGE_PROFILE` to override).
+  - `share/modulefiles/captureforge/0.1.0.lua` — optional Lmod modulefile stub for sites that have Lmod
+    (edit `install_root` / `refs_root`); **not required** on a no-module cluster.
 
-The **full cluster install/deploy** — Apptainer build, centralized reference data + index, the modulefile,
-and the wrapper — is documented step-by-step in **`docs/hpc_deployment.md`**.
+The **full cluster install/deploy** — container build (Apptainer or Singularity), centralized reference data +
+index, the wrapper on PATH (and the optional modulefile) — is documented step-by-step in
+**`docs/hpc_deployment.md`**.
 
 ---
 
@@ -476,9 +495,12 @@ to the index prefix.
 |---|---|---|
 | `test` | tiny mini-genome fixture; runs on a laptop in ~2 min | `,conda` / `,docker` |
 | `local` | full pipeline on one machine (any Linux/macOS) | `,conda` / `,docker` |
-| `hpc_slurm` | SLURM executor; big slots for the heavy specificity step | `,apptainer` |
+| `hpc_slurm` | SLURM executor; big slots for the heavy specificity step | `,singularity` / `,apptainer` |
 
-Container-engine profiles `conda`, `docker`, `apptainer` are composed, e.g. `-profile hpc_slurm,apptainer`.
+Container-engine profiles `conda`, `docker`, `apptainer`, and `singularity` are composed, e.g.
+`-profile hpc_slurm,singularity` (SingularityCE clusters — no `apptainer` binary) or
+`-profile hpc_slurm,apptainer`. `singularity` and `apptainer` differ only in the engine toggle and run the
+same `.sif` image.
 
 ## Key parameters (real defaults from `nextflow.config`)
 
@@ -544,17 +566,19 @@ conda activate captureforge   # captureforge run warns if the env is not active
 captureforge run -profile local -params-file params.full.yaml
 ```
 
-## Full run — `hpc_slurm` with Apptainer
+## Full run — `hpc_slurm` with Singularity or Apptainer
 
-Build the container once (Apptainer and Singularity are interchangeable — `singularity build` takes the same
-arguments), then run through the same `captureforge run` front door used locally, pointing `--pipeline` at the
-installed `main.nf`:
+Build the container once (Apptainer and SingularityCE are interchangeable — `singularity build` and
+`apptainer build` take the same arguments and produce the same `.sif`), then run through the same
+`captureforge run` front door used locally, pointing `--pipeline` at the installed `main.nf`. Compose the
+packaging profile that matches your engine — `hpc_slurm,singularity` (SingularityCE clusters) or
+`hpc_slurm,apptainer`:
 
 ```bash
-apptainer build captureforge.sif env/captureforge.def
+singularity build captureforge.sif env/captureforge.def   # or: apptainer build captureforge.sif env/captureforge.def
 captureforge run \
     --pipeline /shared/apps/captureforge/main.nf \
-    -profile hpc_slurm,apptainer \
+    -profile hpc_slurm,singularity \
     -params-file my_panel.params.yaml \
     --genome_fasta $CF_REFS/GRCh38.primary_assembly.fa \
     --gtf $CF_REFS/GRCh38.112.gtf.gz \
@@ -568,12 +592,14 @@ captureforge run \
     --outdir results
 ```
 
-> On a **deployed** cluster, `module load captureforge` puts the launcher on PATH and resolves the install
-> path, the container image, and the `hpc_slurm,apptainer` profile from the modulefile — so the invocation
-> reduces to `captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue>` (the Lmod wrapper),
-> with no `--pipeline` needed. The exact PATH/module mechanism, the shared install path, and the
-> partition/account are **finalized at HPC deployment** — see *Shared HPC install* above and
-> `docs/hpc_deployment.md`. Keep `--slurm_partition <queue>` as a placeholder for your site's queue.
+> On a **deployed** cluster the `captureforge-run` wrapper resolves the install path, the container image, and
+> the `hpc_slurm,<engine>` profile (default `singularity`) from environment variables — so the invocation
+> reduces to `captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue>`, with no
+> `--pipeline` needed. On a **no-module cluster** the wrapper is reached by putting `<install>/share/bin` on
+> `PATH`; on an Lmod site `module load captureforge` does the same. The exact access mechanism, the shared
+> install path, and the partition/account are **finalized at HPC deployment** — see *Shared HPC install* above
+> and `docs/hpc_deployment.md`. Keep `--slurm_partition <queue>` as a placeholder for your site's queue (e.g.
+> `global` on this cluster).
 
 ---
 

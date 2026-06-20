@@ -1,22 +1,82 @@
 #!/usr/bin/env bash
-# Shared launcher for CaptureForge on the HPC. After `module load captureforge`,
-# users run:  captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue>
-# Forwards all args to `nextflow run`. Defaults to the hpc_slurm,apptainer profile.
+# Shared launcher for CaptureForge on an HPC cluster.
+#
+# Works WITH or WITHOUT a module system:
+#   • Lmod sites:   `module load captureforge` sets CAPTUREFORGE_HOME/_SIF/_REFS, then run this.
+#   • No-module sites: drop this script on a shared PATH (e.g. put
+#     <install_root>/share/bin on PATH). It resolves everything from environment
+#     variables + install-relative defaults — no `module load` required.
+#
+# Usage:
+#   captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue> [more nextflow args]
+#   captureforge-run --help
+#
+# Environment (all optional; defaults derived from this script's install location):
+#   CAPTUREFORGE_HOME     install/repo root        (default: parent of this script's share/bin)
+#   CAPTUREFORGE_SIF      path to captureforge.sif (default: $CAPTUREFORGE_HOME/captureforge.sif)
+#   CAPTUREFORGE_REFS     reference dir            (default: $CAPTUREFORGE_HOME/refs)
+#   CAPTUREFORGE_ENGINE   apptainer | singularity  (default: singularity — this cluster has no `apptainer`)
+#   CAPTUREFORGE_PROFILE  full -profile string     (default: hpc_slurm,$CAPTUREFORGE_ENGINE)
+# Forwards all extra args straight through to `nextflow run`.
 set -euo pipefail
 
-: "${CAPTUREFORGE_HOME:?module load captureforge first (CAPTUREFORGE_HOME unset)}"
-PROFILE="${CAPTUREFORGE_PROFILE:-hpc_slurm,apptainer}"
+# --- resolve install root WITHOUT Lmod -------------------------------------
+# This script lives at <CAPTUREFORGE_HOME>/share/bin/captureforge-run; derive the
+# root from its own location so it works when simply placed on PATH.
+_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_default_home="$(cd "${_self_dir}/../.." && pwd)"
+CAPTUREFORGE_HOME="${CAPTUREFORGE_HOME:-$_default_home}"
 
-# Use the central reference dir unless the caller overrides via params/CLI.
-REFS="${CAPTUREFORGE_REFS:-}"
+# --- container engine + profile (selectable; default singularity) ----------
+# Default to SingularityCE (this cluster has no `apptainer` binary); an Apptainer
+# site sets CAPTUREFORGE_ENGINE=apptainer (or CAPTUREFORGE_PROFILE=hpc_slurm,apptainer).
+ENGINE="${CAPTUREFORGE_ENGINE:-singularity}"
+case "$ENGINE" in
+  apptainer|singularity) ;;
+  *) echo "[captureforge-run] ERROR: CAPTUREFORGE_ENGINE must be 'apptainer' or 'singularity' (got '$ENGINE')" >&2; exit 2 ;;
+esac
+PROFILE="${CAPTUREFORGE_PROFILE:-hpc_slurm,${ENGINE}}"
+
+# --- image + refs with install-relative defaults ---------------------------
+SIF="${CAPTUREFORGE_SIF:-${CAPTUREFORGE_HOME}/captureforge.sif}"
+REFS="${CAPTUREFORGE_REFS:-${CAPTUREFORGE_HOME}/refs}"
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  cat <<EOF
+captureforge-run — shared HPC launcher (forwards to: nextflow run main.nf)
+  CAPTUREFORGE_HOME    = ${CAPTUREFORGE_HOME}
+  CAPTUREFORGE_ENGINE  = ${ENGINE}
+  CAPTUREFORGE_PROFILE = ${PROFILE}
+  CAPTUREFORGE_SIF     = ${SIF}
+  CAPTUREFORGE_REFS    = ${REFS}
+
+usage: captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue> [nextflow args]
+No module system required: place <install_root>/share/bin on PATH and run.
+EOF
+  exit 0
+fi
+
+# Nextflow's container flag matches the engine (-with-singularity / -with-apptainer);
+# both engines run the same .sif image.
 extra=()
-if [[ -n "$REFS" && -d "$REFS" ]]; then
+if [[ -f "$SIF" ]]; then
+  extra+=("-with-${ENGINE}" "$SIF")
+else
+  echo "[captureforge-run] note: no .sif at '$SIF' — relying on the '${ENGINE}' profile's image wiring. Set CAPTUREFORGE_SIF to point at captureforge.sif." >&2
+fi
+if [[ -d "$REFS" ]]; then
   [[ -e "$REFS/grch38_noalt_bt2.1.bt2" || -e "$REFS/grch38_noalt.nsq" ]] || \
     echo "[captureforge-run] note: build a no-alt specificity index in $REFS (see docs/hpc_deployment.md)" >&2
 fi
 
-echo "[captureforge-run] nextflow run ${CAPTUREFORGE_HOME}/main.nf -profile ${PROFILE} $*" >&2
-exec nextflow run "${CAPTUREFORGE_HOME}/main.nf" \
+# Prefer the vendored, version-pinned launcher (matches the `captureforge` CLI);
+# fall back to a system `nextflow` on PATH.
+NF="nextflow"
+if [[ -x "${CAPTUREFORGE_HOME}/.tools/nextflow" ]]; then
+  NF="${CAPTUREFORGE_HOME}/.tools/nextflow"
+fi
+
+echo "[captureforge-run] ${NF} run ${CAPTUREFORGE_HOME}/main.nf -profile ${PROFILE} ${extra[*]:-} $*" >&2
+exec "$NF" run "${CAPTUREFORGE_HOME}/main.nf" \
     -profile "${PROFILE}" \
-    -with-apptainer "${CAPTUREFORGE_SIF:-}" \
-    "${extra[@]}" "$@"
+    ${extra[@]+"${extra[@]}"} "$@"

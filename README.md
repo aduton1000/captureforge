@@ -91,7 +91,7 @@ captureforge run -profile local,conda \
     --outdir results
 ```
 
-`--specificity_db` must be an absolute path to the index prefix, built from the no-alt primary assembly; the pipeline fails loud on a with-alt or toplevel index. For a SLURM cluster, switch to `-profile hpc_slurm,apptainer` — see the manual.
+`--specificity_db` must be an absolute path to the index prefix, built from the no-alt primary assembly; the pipeline fails loud on a with-alt or toplevel index. For a SLURM cluster, switch to `-profile hpc_slurm,singularity` (or `hpc_slurm,apptainer`) — see the manual.
 
 ## Inputs and outputs
 

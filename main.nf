@@ -13,7 +13,7 @@ def helpMessage() {
     ║  CaptureForge ${workflow.manifest.version}  —  bait design pipeline   ║
     ╚══════════════════════════════════════════════════════════════════════╝
     Usage:
-      nextflow run main.nf -profile <test|local|hpc_slurm>,<conda|docker|apptainer> \\
+      nextflow run main.nf -profile <test|local|hpc_slurm>,<conda|docker|apptainer|singularity> \\
         --input <genes.txt|spec.csv|panel.xlsx> --genome_fasta <noalt.fa> --gtf <ann.gtf> \\
         --specificity_db <noalt_index_prefix>
 
