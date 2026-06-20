@@ -230,7 +230,8 @@ change.
   ```
 
   - `share/bin/captureforge-run` — wrapper that forwards to `nextflow run … -profile hpc_slurm,<engine>`,
-    defaulting to `singularity` (set `CAPTUREFORGE_ENGINE=apptainer` or `CAPTUREFORGE_PROFILE` to override).
+    defaulting to `singularity` (set `CAPTUREFORGE_ENGINE=apptainer` or `CAPTUREFORGE_PROFILE` to override). It
+    passes the resolved `CAPTUREFORGE_SIF` as `--container_image` so tasks run inside the image.
   - `share/modulefiles/captureforge/0.1.0.lua` — optional Lmod modulefile stub for sites that have Lmod
     (edit `install_root` / `refs_root`); **not required** on a no-module cluster.
 
@@ -594,8 +595,16 @@ captureforge run \
     --slurm_partition <queue> \
     --scratch_dir $TMPDIR \
     --bind_paths /hpc \
+    --container_image /hpc/opt/captureforge/images/captureforge.sif \
     --outdir results
 ```
+
+> **`--container_image` (required with any engine).** Sets `process.container` so every task runs *inside* the
+> image (`singularity exec <image> …`) — including the viz stages (`MAKE_FIGURES`, `MAKE_DASHBOARD`). Enabling an
+> engine without it makes Nextflow run tasks on the **host** (incomplete tools → e.g. `No module named
+> 'matplotlib'`); the pipeline now fails loudly instead. Use a local `.sif` path for singularity/apptainer
+> (`/hpc/opt/...` `[cluster-specific]`) or an image tag for docker; best set as `container_image:` in the params
+> file. Bare `-profile test` (no engine) still runs natively and needs no image.
 
 > **`--bind_paths` (container bind mounts).** Singularity/Apptainer auto-mount only `$HOME`, `/tmp`, and the CWD.
 > The specificity index (`--specificity_db`) is **referenced in place, not staged** — so when references live

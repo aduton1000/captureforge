@@ -62,13 +62,14 @@ EOF
   exit 0
 fi
 
-# Nextflow's container flag matches the engine (-with-singularity / -with-apptainer);
-# both engines run the same .sif image.
+# Wire the image to process.container (via --container_image) so every task runs
+# inside it. The engine itself is turned on by the composed profile; both engines
+# run the same .sif. (An empty/missing image + enabled engine fails loudly in main.nf.)
 extra=()
 if [[ -f "$SIF" ]]; then
-  extra+=("-with-${ENGINE}" "$SIF")
+  extra+=("--container_image" "$SIF")
 else
-  echo "[captureforge-run] note: no .sif at '$SIF' — relying on the '${ENGINE}' profile's image wiring. Set CAPTUREFORGE_SIF to point at captureforge.sif." >&2
+  echo "[captureforge-run] note: no .sif at '$SIF' — set CAPTUREFORGE_SIF to point at captureforge.sif, or pass --container_image. Without an image the run will fail loudly (engine enabled, no image)." >&2
 fi
 if [[ -d "$REFS" ]]; then
   [[ -e "$REFS/grch38_noalt_bt2.1.bt2" || -e "$REFS/grch38_noalt.nsq" ]] || \

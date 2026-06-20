@@ -83,8 +83,16 @@ captureforge run \
     --rsid_bed       $CF_REFS/anchors.rsid.bed \
     --slurm_partition <queue> --scratch_dir $TMPDIR \
     --bind_paths /hpc \
+    --container_image /hpc/opt/captureforge/images/captureforge.sif \
     --outdir results
 ```
+
+> **`--container_image` is required when an engine is enabled.** It sets `process.container`, so every task runs
+> via `singularity exec <image> …` (the `.sif` you built in §1). Without it, Nextflow turns the engine on but
+> wires no image to processes — tasks then run on the **host** (silently, until a stage needs a tool the host
+> lacks, e.g. `matplotlib`). The pipeline now **fails loudly** in that case. For singularity/apptainer use a
+> local `.sif` path (`/hpc/opt/...` `[cluster-specific]`); for docker use the image tag. Put it in the params
+> file as `container_image:` so it's not retyped each run.
 
 > **Container bind path (`--bind_paths`).** Singularity/Apptainer only auto-mount `$HOME`, `/tmp`, and the CWD.
 > The specificity index (`--specificity_db`) is **referenced in place — not staged into work dirs** — so if your

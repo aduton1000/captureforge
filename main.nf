@@ -24,6 +24,15 @@ def helpMessage() {
 
 workflow {
     if (params.help) { helpMessage(); return }
+    // Guard: an enabled container engine with no image silently runs tasks on the
+    // HOST (host tools may be incomplete — e.g. no matplotlib). Fail loudly instead.
+    if (workflow.containerEngine && !params.container_image) {
+        exit 1, "ERROR: container engine '${workflow.containerEngine}' is enabled but --container_image is unset.\n" +
+                "  Set it to the image so tasks run inside the container, e.g.\n" +
+                "    singularity/apptainer:  --container_image /path/to/captureforge.sif\n" +
+                "    docker:                 --container_image captureforge:0.1.0\n" +
+                "  (or omit the engine profile to run natively on the host)."
+    }
     if (!params.input)         { exit 1, "ERROR: --input gene list is required" }
     if (!params.genome_fasta)  { exit 1, "ERROR: --genome_fasta is required" }
     if (!params.gtf)           { exit 1, "ERROR: --gtf is required" }

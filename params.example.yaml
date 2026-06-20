@@ -53,5 +53,13 @@ synth_max_len: 170
 per_oligo_price: 0.00200
 pool_tiers:      [12000, 92000, 244000]
 
+# ---- Container image (required when a container engine profile is composed) ----
+# The image every task runs inside. REQUIRED with -profile ...,singularity|apptainer|docker
+# (the run fails loudly if an engine is enabled and this is empty). Leave unset for
+# native/host runs (bare -profile test, or ,conda).
+#   singularity / apptainer:  a local .sif path, e.g. /opt/captureforge/captureforge.sif
+#   docker:                   an image tag / docker:// URI, e.g. captureforge:0.1.0
+# container_image: /path/to/captureforge.sif
+
 # ---- Output ----
 outdir:  results
