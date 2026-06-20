@@ -1,0 +1,43 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  CaptureForge — site environment (EXAMPLE)
+#
+#  Fill this in ONCE per cluster, then source it from each user's ~/.bashrc
+#  (or a shared profile.d snippet). After sourcing, `captureforge` and
+#  `captureforge-run` are on PATH and the container bind is configured — so a run
+#  is just:
+#
+#      captureforge-run -params-file <site>.params.yaml --input panel.txt --outdir results
+#
+#  Copy to a real path and edit the values marked [EDIT]:
+#      cp share/captureforge-env.sh.example /hpc/opt/captureforge/captureforge-env.sh
+#      echo 'source /hpc/opt/captureforge/captureforge-env.sh' >> ~/.bashrc
+#
+#  All paths below are EXAMPLES (the "/hpc/..." form is one site's layout).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Install/repo root (the directory containing main.nf, bin/, share/, .tools/).
+export CAPTUREFORGE_HOME="/hpc/opt/captureforge"            # [EDIT]
+
+# Put both the wrapper (share/bin) and the helper scripts (bin) on PATH.
+export PATH="$CAPTUREFORGE_HOME/share/bin:$CAPTUREFORGE_HOME/bin:$PATH"
+
+# Container image built from env/captureforge.def (see docs/hpc_deployment.md §1).
+export CAPTUREFORGE_SIF="$CAPTUREFORGE_HOME/captureforge.sif"   # [EDIT if elsewhere]
+
+# Reference root (genome .clean.fa, GTF, specificity index, masks …).
+export CAPTUREFORGE_REFS="/hpc/refs/captureforge/GRCh38"    # [EDIT]
+
+# Container engine: singularity (default) or apptainer. Same .sif either way.
+export CAPTUREFORGE_ENGINE="singularity"                    # [EDIT if Apptainer site]
+
+# Host path(s) to bind into task containers. REQUIRED when references live outside
+# $HOME/CWD (e.g. under /hpc): Singularity/Apptainer auto-mount only $HOME, /tmp,
+# and CWD, and the specificity index is referenced in place (not staged). The
+# wrapper exports SINGULARITY_BIND/APPTAINER_BIND from this (whitelisted so they
+# survive Nextflow's task env-scrub) and also passes --bind_paths. Comma-separate
+# multiple roots. Leave empty if all refs live under $HOME/CWD.
+export CAPTUREFORGE_BIND="/hpc"                             # [EDIT or unset]
+
+# Shared, read-only conda? Point the package cache at a writable dir to avoid
+# "cannot set permissions" on the shared pkgs cache. Uncomment + edit if needed.
+# export CONDA_PKGS_DIRS="$HOME/.conda/pkgs"                # [EDIT]

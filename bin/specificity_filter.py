@@ -89,8 +89,16 @@ def assert_noalt_reference(db, aligner, genome_fai=None):
               f"   bin/build_specificity_index.sh --fasta <primary_no_alt.fa> --aligner {aligner} --out <prefix>\n")
         sys.exit(3)
     if genome_fai and os.path.exists(genome_fai):
+        # Compare on the FIRST whitespace-delimited token of each contig name on
+        # BOTH sides. Some index builders (notably bowtie2-build) store the FULL
+        # FASTA header as the contig name (e.g. "1 dna:chromosome chromosome:GRCh38:1:...")
+        # while `samtools faidx` keeps only the first token ("1"). Without this
+        # normalization a correctly matched no-alt index would look like a DIFFERENT
+        # reference and fail spuriously. (Best practice is still to clean headers at
+        # prep time — bin/fetch_references.sh emits a *.clean.fa; see
+        # build_specificity_index.sh — but this keeps an un-cleaned index working.)
         gnames = {l.split('\t')[0] for l in open(genome_fai)}
-        dnames = set(names)
+        dnames = {n.split()[0] for n in names if n.split()}
         extra = dnames - gnames
         if extra:
             sys.stderr.write(

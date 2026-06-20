@@ -71,14 +71,16 @@ The three subcommands cover the full workflow; each is additive over the underly
 captureforge panel my_genes.txt -o my_panel.spec.csv
 ```
 
-**Build the specificity index** once, from the no-alt primary assembly (the same genome the baits target):
+**Build the specificity index** once, from the no-alt primary assembly (the same genome the baits target). Use the **header-cleaned** FASTA that `bin/fetch_references.sh genome` writes (`*.clean.fa`, headers truncated to the first token) so the genome and the index agree on contig names:
 
 ```bash
 captureforge index \
-    --fasta refs/GRCh38.noalt.fa \
+    --fasta refs/Homo_sapiens.GRCh38.dna.primary_assembly.clean.fa \
     --aligner blast \
     --out $PWD/refs/grch38_noalt
 ```
+
+The same cleaned FASTA must be passed as `--genome_fasta`. (Stage 4 enforces the no-alt rule and a same-reference cross-check; it now also compares contig names on their first token, so an un-cleaned index still matches — but cleaning at prep time is the supported path.)
 
 **Run the design** on a real panel:
 
@@ -91,7 +93,15 @@ captureforge run -profile local,conda \
     --outdir results
 ```
 
-`--specificity_db` must be an absolute path to the index prefix, built from the no-alt primary assembly; the pipeline fails loud on a with-alt or toplevel index. For a SLURM cluster, switch to `-profile hpc_slurm,singularity` (or `hpc_slurm,apptainer`) — see the manual.
+`--specificity_db` must be an absolute path to the index prefix, built from the no-alt primary assembly; the pipeline fails loud on a with-alt or toplevel index.
+
+**On a shared SLURM cluster**, install once centrally and run through the `captureforge-run` wrapper. A site fills in `share/captureforge-env.sh.example` once (PATH, image, refs, container bind) and sources it from `~/.bashrc`, and copies `conf/cluster.params.example.yaml` once; then every run is just:
+
+```bash
+captureforge-run -params-file site.params.yaml --input panel.txt --outdir results
+```
+
+The container runs under **Singularity or Apptainer** (same `.sif`); references that live outside `$HOME`/CWD (the specificity index) are made visible by binding their root (`CAPTUREFORGE_BIND`), and bowtie2 specificity uses capped `-k` reporting so it scales to the whole genome. The full step-by-step — build, reference prep (incl. header cleaning), the env file, and the bind — is in [`docs/hpc_deployment.md`](docs/hpc_deployment.md) and the manual.
 
 ## Inputs and outputs
 

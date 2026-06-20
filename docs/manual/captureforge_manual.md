@@ -188,11 +188,17 @@ change.
 
   ```bash
   source /hpc/opt/conda/etc/profile.d/conda.sh          # [cluster-specific] shared conda
+  export CONDA_PKGS_DIRS="$HOME/.conda/pkgs"             # if the shared pkgs cache is read-only (see below)
   mamba env create -f env/captureforge.yml              # lands in /hpc/opt/conda/envs/captureforge
   conda activate captureforge                            # works from any node
   ```
 
   (Linux is native here — **no `CONDA_SUBDIR`/Rosetta**; that is a macOS-only step.)
+
+  > **Shared read-only conda caveat.** When the cluster conda's package cache is not group-writable, env/CLI
+  > creation fails with *"cannot set permissions"* on the pkgs cache. Set `CONDA_PKGS_DIRS` to a writable dir
+  > (as above) first. On a **container-only** deployment you can skip the host env entirely — the tools come
+  > from the `.sif`, and `captureforge run` no longer warns about a missing conda env when an engine is selected.
 
 - **Container image** (native linux; Docker is usually disallowed on shared clusters). One `.sif` runs under
   either engine — this cluster has SingularityCE, so build with `singularity`:
@@ -200,8 +206,19 @@ change.
   ```bash
   # SingularityCE (this cluster — no `apptainer` binary):
   sudo singularity build /hpc/opt/captureforge/captureforge.sif env/captureforge.def   # [cluster-specific] path
-  #   unprivileged alternative:  singularity build --fakeroot captureforge.sif env/captureforge.def
+  #   unprivileged alternative (needs fakeroot — a /etc/subuid + /etc/subgid entry for you):
+  #     singularity build --fakeroot captureforge.sif env/captureforge.def
   # Apptainer sites instead:     apptainer build captureforge.sif env/captureforge.def
+  ```
+
+  The provided `.def` deliberately includes `procps` (`ps`) and base shell utils — **Nextflow runs `ps` to poll
+  each task**, so a stripped image makes tasks fail; build from the `.def` and don't trim it. Verify tools with
+  a **non-login** shell (a login shell, `bash -lc`, re-sources profiles and can reset PATH, hiding image tools):
+
+  ```bash
+  singularity exec /hpc/opt/captureforge/captureforge.sif bowtie2 --version
+  singularity exec /hpc/opt/captureforge/captureforge.sif python -c 'import matplotlib; print(matplotlib.__version__)'
+  singularity exec /hpc/opt/captureforge/captureforge.sif ps --version      # procps present
   ```
 
 - **SLURM is global** here — **no special partition is required by default**. Keep the partition and
@@ -210,18 +227,35 @@ change.
 
 - **Access mechanism:** the `captureforge-run` wrapper. **This cluster has no module system**, so the wrapper
   goes on a shared `PATH` and resolves the install root, `.sif`, and refs from environment variables (with
-  install-relative defaults) — no `module load` needed:
+  install-relative defaults) — no `module load` needed. The tidy path is to fill in the site env file ONCE and
+  source it from `~/.bashrc`, then copy the params template once:
+
+  ```bash
+  # one-time (admin): copy + edit share/captureforge-env.sh.example → a shared path
+  cp share/captureforge-env.sh.example /hpc/opt/captureforge/captureforge-env.sh   # [cluster-specific]
+  # one-time (each user): source it
+  echo 'source /hpc/opt/captureforge/captureforge-env.sh' >> ~/.bashrc
+  # one-time: start your params file from the annotated template
+  cp conf/cluster.params.example.yaml site.params.yaml   # then edit refs/index/partition/image
+
+  # every run thereafter — short, no preamble:
+  captureforge-run -params-file site.params.yaml --input panel.txt --outdir results
+  ```
+
+  The env file sets `PATH` (wrapper on PATH), `CAPTUREFORGE_HOME/_SIF/_REFS/_ENGINE`, and `CAPTUREFORGE_BIND`.
+  `CAPTUREFORGE_BIND` makes referenced-in-place refs under `/hpc` — like the `--specificity_db` index — visible
+  inside task containers, which otherwise auto-mount only `$HOME`/`/tmp`/CWD. The wrapper exports
+  `SINGULARITY_BIND`/`APPTAINER_BIND` from it (whitelisted so they survive Nextflow's env scrub) and also passes
+  `--bind_paths`. `slurm_partition`, `container_image`, and the reference paths live in the params file, so they
+  are not retyped per run (override any with a CLI flag, e.g. `--slurm_partition <queue>`).
+
+  Without the env file, the equivalent is to export the same vars by hand:
 
   ```bash
   export PATH=/hpc/opt/captureforge/share/bin:$PATH      # [cluster-specific] install root
   export CAPTUREFORGE_BIND=/hpc                          # [cluster-specific] bind refs into containers
-  captureforge-run -params-file my_panel.params.yaml     # add --slurm_partition/account only if needed
+  captureforge-run -params-file site.params.yaml --input panel.txt --outdir results
   ```
-
-  (`CAPTUREFORGE_BIND` makes referenced-in-place refs under `/hpc` — like the `--specificity_db` index — visible
-  inside task containers, which otherwise auto-mount only `$HOME`/`/tmp`/CWD. The wrapper exports
-  `SINGULARITY_BIND`/`APPTAINER_BIND` from it (whitelisted so they survive Nextflow's env scrub) and also passes
-  `--bind_paths`.)
 
   On a site that **does** have Lmod, the same wrapper is reachable via a module instead:
 
@@ -234,6 +268,10 @@ change.
   - `share/bin/captureforge-run` — wrapper that forwards to `nextflow run … -profile hpc_slurm,<engine>`,
     defaulting to `singularity` (set `CAPTUREFORGE_ENGINE=apptainer` or `CAPTUREFORGE_PROFILE` to override). It
     passes the resolved `CAPTUREFORGE_SIF` as `--container_image` so tasks run inside the image.
+  - `share/captureforge-env.sh.example` — the site env file: fill in once, source from `~/.bashrc`, and the
+    wrapper + bind are configured (no per-run exports).
+  - `conf/cluster.params.example.yaml` — annotated params-file template a site copies and edits once (cleaned
+    `genome_fasta`, `gtf`, `specificity_db`, `bind_paths`, `container_image`, `slurm_partition`).
   - `share/modulefiles/captureforge/0.1.0.lua` — optional Lmod modulefile stub for sites that have Lmod
     (edit `install_root` / `refs_root`); **not required** on a no-module cluster.
 
@@ -397,9 +435,9 @@ You need a no-alt genome FASTA, a matching GTF, and a specificity index built fr
 *Reference data*). For human GRCh38, fetch the optional tracks once:
 
 ```bash
-bin/fetch_references.sh --outdir refs gtf
+bin/fetch_references.sh --outdir refs gtf genome    # genome writes *.clean.fa (+ .fai)
 captureforge index \
-    --fasta refs/GRCh38.primary_assembly.fa \
+    --fasta refs/Homo_sapiens.GRCh38.dna.primary_assembly.clean.fa \
     --aligner blast \
     --out $PWD/refs/grch38_noalt
 ```
@@ -409,7 +447,7 @@ captureforge index \
 ```bash
 captureforge run -profile local \
     --input tp53_panel.csv \
-    --genome_fasta refs/GRCh38.primary_assembly.fa \
+    --genome_fasta refs/Homo_sapiens.GRCh38.dna.primary_assembly.clean.fa \
     --gtf refs/Homo_sapiens.GRCh38.112.gtf.gz \
     --specificity_db $PWD/refs/grch38_noalt \
     --specificity_aligner blast \
@@ -453,11 +491,18 @@ but are not required.
 ```bash
 bin/fetch_references.sh --outdir refs gtf                 # only the Ensembl r112 GTF (~50 MB)
 bin/fetch_references.sh --outdir refs rmsk simplerepeat   # STR/repeat masks
+bin/fetch_references.sh --outdir refs genome              # genome + header-cleaned *.clean.fa (+ .fai)
 bin/fetch_references.sh --outdir refs all                 # everything (heavy!)
 ```
 
+The `genome` target downloads the no-alt `dna.primary_assembly.fa.gz` **and** writes a header-cleaned
+companion, `Homo_sapiens.GRCh38.dna.primary_assembly.clean.fa` (+ `.fai`) — headers truncated to the first
+whitespace token (`1 2 … X Y MT` + scaffolds). **Use that cleaned FASTA** both as `--genome_fasta` and as the
+input to the specificity index build (next section); it is why the genome and the index agree on contig names.
+
 For **non-human** organisms, fetch the genome FASTA and GTF yourself (Ensembl / Ensembl Genomes / PlasmoDB)
-and pass them with `--genome_fasta` / `--gtf` (see *Running on different organisms*).
+and pass them with `--genome_fasta` / `--gtf` (see *Running on different organisms*). Clean their headers the
+same way (`awk '/^>/{print $1; next} {print}' in.fa > clean.fa && samtools faidx clean.fa`).
 
 ## The no-alt reference invariant (read this)
 
@@ -472,25 +517,37 @@ reference contains alt/decoy/HLA contigs (`HSCHR*`, `*_MHC_*`, `HLA-*`, `*_alt`,
 and cross-checks that the db contigs are a subset of the design genome. On a clean primary assembly the check
 reports the contig count and passes (e.g. *"reference invariant OK: no alt/decoy/HLA"*).
 
+The same-reference cross-check compares contig names on their **first whitespace token** on both sides — because
+index builders store the full FASTA header as the contig name while `samtools faidx` keeps only the first token
+(see *Building the specificity index*). So an index built from an un-cleaned FASTA still matches the genome;
+the alt/decoy invariant stays strict.
+
 ## Building the specificity index
 
-Build the index **from the no-alt design genome**:
+Build the index **from the cleaned no-alt design genome** — the `*.clean.fa` from `fetch_references.sh genome`
+(headers truncated to the first token). This matters: `bowtie2-build` / `bwa index` / `makeblastdb` store the
+**full FASTA header** as each contig name (`1 dna:chromosome chromosome:GRCh38:1:…`), whereas `samtools faidx`
+keeps only the first token (`1`). If the genome and the index disagree on names, Stage 4 sees two different
+references. Using the cleaned FASTA for **both** `--genome_fasta` and the index keeps them aligned (and the
+`build_specificity_index.sh` helper warns if it sees multi-token headers).
 
 ```bash
 # BLAST (no index-build wait; convenient for local runs)
 captureforge index \
-    --fasta GRCh38.primary_assembly.fa \
+    --fasta refs/Homo_sapiens.GRCh38.dna.primary_assembly.clean.fa \
     --aligner blast \
     --out $PWD/refs/grch38_noalt
 # bowtie2 (native, recommended on the HPC)
 captureforge index \
-    --fasta GRCh38.primary_assembly.fa \
+    --fasta refs/Homo_sapiens.GRCh38.dna.primary_assembly.clean.fa \
     --aligner bowtie2 \
     --out $PWD/refs/grch38_noalt_bt2
 ```
 
 `--specificity_db` is referenced **in place** (not staged into work dirs), so it **must be an absolute path**
-to the index prefix.
+to the index prefix. With `bowtie2`, Stage 4 reports hits with a cap (`-k`, not `-a`) tied to the off-target
+threshold, so it scales to the whole genome — a bait in a repeat element is rejected without enumerating its
+(potentially millions of) hits. Nothing to configure; it explains the fast specificity runtime.
 
 ---
 
@@ -566,10 +623,10 @@ bash test/check_outputs.sh                    # sanity-check; expects all 6 desi
 
 ```bash
 captureforge index \
-    --fasta GRCh38.primary_assembly.fa \
+    --fasta refs/Homo_sapiens.GRCh38.dna.primary_assembly.clean.fa \
     --aligner blast \
     --out $PWD/refs/grch38_noalt
-conda activate captureforge   # captureforge run warns if the env is not active
+conda activate captureforge   # captureforge run warns if the env is not active (native runs only)
 captureforge run -profile local -params-file params.full.yaml
 ```
 
@@ -587,7 +644,7 @@ captureforge run \
     --pipeline /shared/apps/captureforge/main.nf \
     -profile hpc_slurm,singularity \
     -params-file my_panel.params.yaml \
-    --genome_fasta $CF_REFS/GRCh38.primary_assembly.fa \
+    --genome_fasta $CF_REFS/Homo_sapiens.GRCh38.dna.primary_assembly.clean.fa \
     --gtf $CF_REFS/GRCh38.112.gtf.gz \
     --specificity_db $CF_REFS/grch38_noalt_bt2 \
     --specificity_aligner bowtie2 \
@@ -929,6 +986,10 @@ tier, so you decide whether to trim the panel or accept the bigger pool.
 |---|---|---|
 | `ERROR: specificity reference contains ALT/decoy/HLA contigs` (exit 3) | You pointed `--specificity_db` at a toplevel/with-alt index | Rebuild from the **no-alt primary assembly** with `bin/build_specificity_index.sh`; see the reference-invariant section |
 | `ERROR: specificity_db not found … must be an ABSOLUTE path` | Relative `--specificity_db`; it is referenced in place, not staged | Use an absolute path to the index prefix |
+| `ERROR: specificity db and --genome_fasta are DIFFERENT references` | Index and genome contig names disagree (usually full-header vs first-token) | Build genome + index from the **same cleaned** FASTA (`*.clean.fa` from `fetch_references.sh genome`). Stage 4 also compares first-tokens, so re-pull this fix if it still fires |
+| In-container task: `No such file or directory` on the specificity index | Refs live outside `$HOME`/`/tmp`/CWD and weren't bound into the container | Set `CAPTUREFORGE_BIND=/hpc` (wrapper) or `bind_paths:`/`--bind_paths` to the refs root; auto-mounts don't cover it |
+| Every task fails immediately; logs mention `ps` | Container image lacks `procps` (Nextflow polls tasks with `ps`) | Build from the provided `env/captureforge.def` (it includes `procps`); don't strip the image |
+| `captureforge run` warns *"conda env not detected"* under a container | Cosmetic; tools come from the image | Ignore (now suppressed when an engine/`--container_image` is selected); no `conda activate` needed in-container |
 | A gene at **0% coverage** | Either a real paralog problem **or** a reference artifact | Check the off-target subjects: if they are alt-haplotype contigs (`HSCHR…`), it's a reference artifact (the no-alt invariant) — fix the index; if they are a distinct paralog gene, it's genuine paralog-limited coverage |
 | **Most baits rejected** on a new organism | AT-rich (or GC-rich) genome vs the human GC/Tm window | Widen/shift `gc_min`/`gc_max`/`tm_min` (see Plasmodium example) |
 | `python3: command not found` / `ModuleNotFoundError` on macOS | `/usr/bin/env python3` resolved to Homebrew python, not the env | `conda activate captureforge && export PATH="$CONDA_PREFIX/bin:$PATH"`, or run `-profile <x>,conda`/`,docker` |

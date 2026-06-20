@@ -57,9 +57,16 @@ def _load_bin(script):
 
 def _warn_env_if_local(passthrough):
     """arm64 backstop: warn (do NOT auto-activate) if the captureforge conda env / its
-    tools are not on PATH for a LOCAL (non-container) run. The user stays in control."""
+    tools are not on PATH for a LOCAL (non-container) run. The user stays in control.
+
+    Suppressed for ANY container engine (the tools come from the image, not a host
+    conda env) — including singularity, which the old check missed and so emitted a
+    misleading 'conda activate captureforge' on every in-container cluster run."""
     joined = " ".join(passthrough)
-    if "docker" in joined or "apptainer" in joined:
+    # A container engine selected via -profile ...,<engine>, an explicit -with-<engine>,
+    # or a wired --container_image all mean the tools live in the image — no conda needed.
+    engines = ("docker", "apptainer", "singularity", "podman", "shifter", "charliecloud", "sarus")
+    if any(e in joined for e in engines) or "--container_image" in passthrough:
         return                                  # a container provides the tools
     env = os.environ.get("CONDA_DEFAULT_ENV", "")
     prefix = os.environ.get("CONDA_PREFIX", "")

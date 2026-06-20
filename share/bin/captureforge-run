@@ -7,9 +7,12 @@
 #     <install_root>/share/bin on PATH). It resolves everything from environment
 #     variables + install-relative defaults — no `module load` required.
 #
-# Usage:
-#   captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue> [more nextflow args]
+# Usage (with the site env sourced — see share/captureforge-env.sh.example):
+#   captureforge-run -params-file site.params.yaml --input panel.txt --outdir results
 #   captureforge-run --help
+# slurm_partition, container_image, bind_paths, specificity_db, genome_fasta, gtf
+# all belong in the params file; put queue there (slurm_partition: <queue>) so it is
+# NOT a required flag. Override per-run with --slurm_partition <queue> if needed.
 #
 # Environment (all optional; defaults derived from this script's install location):
 #   CAPTUREFORGE_HOME     install/repo root        (default: parent of this script's share/bin)
@@ -55,8 +58,9 @@ captureforge-run — shared HPC launcher (forwards to: nextflow run main.nf)
   CAPTUREFORGE_REFS    = ${REFS}
   CAPTUREFORGE_BIND    = ${BIND:-<none>}   # container bind mounts (exports SINGULARITY_BIND/APPTAINER_BIND + --bind_paths)
 
-usage: captureforge-run -params-file my_panel.params.yaml --slurm_partition <queue> [nextflow args]
-No module system required: place <install_root>/share/bin on PATH and run.
+usage: captureforge-run -params-file site.params.yaml --input panel.txt --outdir results [nextflow args]
+Put slurm_partition/container_image/bind_paths/refs in the params file; override with flags if needed.
+No module system required: source share/captureforge-env.sh (or put <install_root>/share/bin on PATH).
 EOF
   exit 0
 fi

@@ -1,0 +1,77 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  CaptureForge — cluster params-file TEMPLATE (copy and edit per site)
+#
+#  This is the file a deployed user copies once and edits. With the site env
+#  sourced (share/captureforge-env.sh), a full run is just:
+#
+#      captureforge-run -params-file /path/site.params.yaml --input panel.txt --outdir results
+#
+#  Every value carrying a path is an EXAMPLE — the "/hpc/..." form is one site's
+#  layout. Replace with your own. Build the genome + index per docs/hpc_deployment.md.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ---- Reference genome (use the HEADER-CLEANED no-alt primary assembly) --------
+# bin/fetch_references.sh genome writes *.dna.primary_assembly.clean.fa (+ .fai):
+# headers truncated to the first token so the genome and the specificity index
+# agree on contig names. Use the SAME cleaned FASTA you built the index from.
+genome_build:   GRCh38
+genome_fasta:   /hpc/refs/captureforge/GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.clean.fa   # [EDIT]
+gtf:            /hpc/refs/captureforge/GRCh38/Homo_sapiens.GRCh38.112.gtf.gz                       # [EDIT]
+ensembl_release: 112
+
+# ---- Optional reference tracks (improve masking / anchors; omit if unused) ----
+rmsk_bed:         /hpc/refs/captureforge/GRCh38/rmsk.GRCh38.txt.gz            # [EDIT/optional]
+simplerepeat_bed: /hpc/refs/captureforge/GRCh38/simpleRepeat.GRCh38.txt.gz   # [EDIT/optional]
+rsid_bed:         /hpc/refs/captureforge/GRCh38/anchors.rsid.bed             # [EDIT/optional]
+
+# ---- Specificity (Stage 4) ---------------------------------------------------
+# bowtie2 is the HPC default; the index MUST be built from the same cleaned no-alt
+# FASTA as genome_fasta (the pipeline enforces no-alt + same-reference, exit 3 on
+# mismatch). Reporting is capped (bowtie2 -k) so it scales to the whole genome.
+# specificity_db is referenced IN PLACE (not staged) → absolute path, and its root
+# must be covered by the container bind (see bind_paths / CAPTUREFORGE_BIND).
+specificity_aligner: bowtie2
+specificity_db:      /hpc/refs/captureforge/GRCh38/grch38_noalt_bt2          # [EDIT] index prefix (absolute)
+offtarget_min_identity: 0.90
+offtarget_min_lenfrac:  0.50
+offtarget_max_hits:     1
+
+# ---- Container image (REQUIRED with any engine) ------------------------------
+# The .sif every task runs inside (built from env/captureforge.def). The run fails
+# loudly if an engine is enabled and this is empty. The captureforge-run wrapper
+# fills this from CAPTUREFORGE_SIF, so you can usually omit it here.
+container_image: /hpc/opt/captureforge/captureforge.sif                      # [EDIT or rely on wrapper]
+
+# ---- Container bind for referenced-in-place refs -----------------------------
+# Singularity/Apptainer auto-mount only $HOME, /tmp, CWD. Bind the root that holds
+# specificity_db (and other in-place refs) so tasks can read it. The wrapper sets
+# this from CAPTUREFORGE_BIND (and exports SINGULARITY_BIND/APPTAINER_BIND); set it
+# here too if you run nextflow directly. Comma-separate multiple roots.
+bind_paths: /hpc                                                             # [EDIT or omit if using wrapper]
+
+# ---- SLURM ------------------------------------------------------------------
+# Put the queue here so it is NOT a required CLI flag (override with
+# --slurm_partition <queue>). slurm_queue_opts → extra sbatch/clusterOptions
+# (e.g. an account: "--account=myproj").
+slurm_partition: global                                                      # [EDIT] your queue/partition
+slurm_queue_opts: ''                                                         # [EDIT/optional] e.g. --account=...
+# scratch_dir: /tmp                                                          # [optional] per-task scratch
+
+# ---- Bait geometry / composition (sane defaults; tune as needed) -------------
+bait_len:        120
+gc_min:          0.25
+gc_max:          0.70
+tm_min:          60.0
+tm_max:          90.0
+
+# ---- Synthesis / cost --------------------------------------------------------
+bait_format:     ivt_rna           # dna_pool | ivt_rna | ready_to_use
+synth_max_len:   170
+per_oligo_price: 0.00200
+pool_tiers:      [12000, 92000, 244000]
+
+# ---- Output ------------------------------------------------------------------
+# panel_name and outdir are commonly passed on the CLI per run, e.g.
+#   captureforge-run -params-file site.params.yaml --input panel.txt --outdir results
+panel_name: captureforge_panel
+outdir:     results

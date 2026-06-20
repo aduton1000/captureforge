@@ -11,8 +11,14 @@
 #  Examples:
 #     bin/fetch_references.sh --outdir refs gtf
 #     bin/fetch_references.sh --outdir refs rmsk simplerepeat   # STR/repeat masks
+#     bin/fetch_references.sh --outdir refs genome              # genome + HEADER-CLEANED *.clean.fa (+faidx)
 #     bin/fetch_references.sh --outdir refs all                 # everything (heavy!)
 #     bin/fetch_references.sh --record-local /path/ref.fa       # md5 an existing FASTA
+#
+#  The `genome` target also writes Homo_sapiens.<BUILD>.dna.primary_assembly.clean.fa
+#  (headers truncated to the first token) + .fai. USE THAT cleaned FASTA both as
+#  --genome_fasta and as the input to bin/build_specificity_index.sh, so the genome
+#  and the specificity index agree on contig names (Stage-4 same-reference check).
 # ═══════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -73,6 +79,37 @@ fetch() {  # url localpath
   curl -fsSL --retry 3 -o "$path" "$url" || err "download failed: $url"
 }
 
+# Produce a HEADER-CLEANED FASTA (+ .fai) from the fetched genome and record it.
+#   WHY: index builders (bowtie2-build, bwa index, makeblastdb) store the FULL
+#   FASTA header as each contig name — e.g. ">1 dna:chromosome chromosome:GRCh38:
+#   1:1:248956422:1 REF" becomes the contig name "1 dna:chromosome …". But
+#   `samtools faidx` keeps only the first token ("1"). If the design genome and
+#   the specificity index disagree on contig names, Stage 4's same-reference check
+#   fails. Truncating headers to the first whitespace token (1 2 … X Y MT +
+#   scaffolds) makes the genome AND the index share names. Build the specificity
+#   index from THIS cleaned FASTA, and pass it as --genome_fasta.
+clean_genome_fasta() {  # src(.fa|.fa.gz)
+  local src="$1"
+  local clean="$OUTDIR/Homo_sapiens.${BUILD}.dna.primary_assembly.clean.fa"
+  if [[ -s "$clean" ]]; then
+    log "header-cleaned FASTA exists, skip: $clean"
+  else
+    log "cleaning FASTA headers to first token → $clean"
+    if [[ "$src" == *.gz ]]; then
+      gzip -dc "$src" | awk '/^>/{print $1; next} {print}' > "$clean"
+    else
+      awk '/^>/{print $1; next} {print}' "$src" > "$clean"
+    fi
+  fi
+  if command -v samtools >/dev/null 2>&1; then
+    [[ -s "${clean}.fai" ]] || { log "samtools faidx → ${clean}.fai"; samtools faidx "$clean"; }
+  else
+    log "NOTE: samtools not on PATH — faidx the cleaned FASTA before use (e.g. inside the container):"
+    log "      samtools faidx $clean"
+  fi
+  record "genome_fasta_clean" "header-cleaned(first-token) from $(basename "$src")" "$clean"
+}
+
 if [[ -n "$RECORD_LOCAL" ]]; then
   [[ -s "$RECORD_LOCAL" ]] || err "no such file: $RECORD_LOCAL"
   log "checksumming local reference (whole genome may take a moment)…"
@@ -83,7 +120,11 @@ for t in "${TARGETS[@]:-}"; do case "$t" in
   genome)
     f="$OUTDIR/Homo_sapiens.${BUILD}.dna.primary_assembly.fa.gz"
     fetch "${ENSEMBL}/fasta/${SPECIES}/dna/Homo_sapiens.${BUILD}.dna.primary_assembly.fa.gz" "$f"
-    record "genome_fasta" "${ENSEMBL}/fasta/${SPECIES}/dna/" "$f" ;;
+    record "genome_fasta" "${ENSEMBL}/fasta/${SPECIES}/dna/" "$f"
+    # Header-clean + faidx so the design genome and the specificity index share
+    # contig names (see clean_genome_fasta). This is the *.clean.fa to use as
+    # --genome_fasta AND to build the index from.
+    clean_genome_fasta "$f" ;;
   gtf)
     f="$OUTDIR/Homo_sapiens.${BUILD}.${RELEASE}.gtf.gz"
     fetch "${ENSEMBL}/gtf/${SPECIES}/Homo_sapiens.${BUILD}.${RELEASE}.gtf.gz" "$f"

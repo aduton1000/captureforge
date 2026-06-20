@@ -30,6 +30,18 @@ if grep -qiE 'HSCHR|_alt|MHC_' "${FASTA}.fai" 2>/dev/null || grep -qiE '^>.*(HSC
   echo "WARNING: '$FASTA' appears to contain ALT contigs — specificity will over-reject MHC/segdup genes." >&2
 fi
 
+# Warn if FASTA headers are NOT first-token-clean. Index builders store the FULL
+# header as each contig name, but `samtools faidx` keeps only the first token —
+# a mismatch makes Stage 4's same-reference check see two different references.
+# (Stage 4 now also compares on first-tokens defensively, but cleaning is best.)
+if grep -m1 -qE '^>[^[:space:]]+[[:space:]]+\S' "$FASTA"; then
+  echo "WARNING: '$FASTA' has multi-token FASTA headers; the index will store the full" >&2
+  echo "         header as each contig name while samtools faidx keeps only the first token." >&2
+  echo "         Clean headers first (and re-faidx) so genome and index names match:" >&2
+  echo "             awk '/^>/{print \$1; next} {print}' in.fa > clean.fa && samtools faidx clean.fa" >&2
+  echo "         (bin/fetch_references.sh genome writes a *.clean.fa automatically.)" >&2
+fi
+
 case "$ALIGNER" in
   blast)    echo "[build] makeblastdb → ${OUT}";   makeblastdb -in "$FASTA" -dbtype nucl -out "$OUT" -title "$(basename "$OUT")" ;;
   bowtie2)  echo "[build] bowtie2-build → ${OUT}";  bowtie2-build --threads "${THREADS:-4}" "$FASTA" "$OUT" ;;

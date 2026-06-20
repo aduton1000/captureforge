@@ -12,8 +12,11 @@ excel_sheet:  "Candidate Panel (expanded)"   # only used when input is an .xlsx
 panel_name:   example_panel
 
 # ---- Reference data (local GRCh38 primary/no-alt; see bin/fetch_references.sh) ----
+# Use the HEADER-CLEANED no-alt FASTA (fetch_references.sh genome writes *.clean.fa,
+# headers truncated to the first token) so the genome and the specificity index agree
+# on contig names. Build the index from the SAME cleaned FASTA.
 genome_build:     GRCh38
-genome_fasta:     /path/to/GRCh38.noalt.fa
+genome_fasta:     /path/to/Homo_sapiens.GRCh38.dna.primary_assembly.clean.fa
 gtf:              refs/Homo_sapiens.GRCh38.112.gtf.gz
 mane_gff:         refs/MANE.GRCh38.v1.4.ensembl_genomic.gff.gz   # optional (GTF already carries MANE_Select tags)
 regulatory_gff:   refs/Homo_sapiens.GRCh38.regulatory_features.gff.gz   # optional
@@ -29,9 +32,9 @@ bait_len:     120
 
 # ---- Specificity ----
 # IMPORTANT: specificity_db MUST be built from the NO-ALT primary assembly
-# (same as genome_fasta). Indexing a toplevel/with-alt reference makes MHC and
-# other alt-haplotype-region genes look non-specific vs their own alt copies.
-#   bin/build_specificity_index.sh --fasta <primary.fa> --aligner blast --out refs/grch38_noalt
+# (same cleaned FASTA as genome_fasta). Indexing a toplevel/with-alt reference makes
+# MHC and other alt-haplotype-region genes look non-specific vs their own alt copies.
+#   bin/build_specificity_index.sh --fasta <primary.clean.fa> --aligner blast --out refs/grch38_noalt
 specificity_aligner:    blast            # blast | bowtie2 | bwa
 specificity_db:         refs/grch38_noalt
 offtarget_min_identity: 0.90
