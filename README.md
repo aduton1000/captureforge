@@ -98,8 +98,11 @@ captureforge run -profile local,conda \
 **On a shared SLURM cluster**, install once centrally and run through the `captureforge-run` wrapper. A site fills in `share/captureforge-env.sh.example` once (PATH, image, refs, container bind) and sources it from `~/.bashrc`, and copies `conf/cluster.params.example.yaml` once; then every run is just:
 
 ```bash
+cd ~/my_run                # run from a writable dir — see note below
 captureforge-run -params-file site.params.yaml --input panel.txt --outdir results
 ```
+
+Runs write Nextflow state (`.nextflow/`, `.nextflow.log`, `work/`) to the **current directory**, so launch from a **writable dir** (your home or a project dir) — never the read-only shared install, which would fail with `.nextflow/history.lock (Permission denied)`. The wrapper pins the log and `work/` under the current dir and refuses to start from a non-writable one; override scratch with `-work-dir`/`NXF_WORK` or the run dir with `CAPTUREFORGE_RUNDIR`.
 
 The container runs under **Singularity or Apptainer** (same `.sif`); references that live outside `$HOME`/CWD (the specificity index) are made visible by binding their root (`CAPTUREFORGE_BIND`), and bowtie2 specificity uses capped `-k` reporting so it scales to the whole genome. The full step-by-step — build, reference prep (incl. header cleaning), the env file, and the bind — is in [`docs/hpc_deployment.md`](docs/hpc_deployment.md) and the manual.
 
