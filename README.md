@@ -1,16 +1,39 @@
-# CaptureForge
+<!-- banner -->
+![CaptureForge](assets/banner.png)
 
-**A reproducible Nextflow pipeline for hybridization-capture probe (bait) design — from a list of target genes to a synthesis-ready, QC'd bait set.**
+<p align="center">
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-2b7bb9">
+  <img alt="nextflow" src="https://img.shields.io/badge/Nextflow-DSL2%20%E2%89%A523.10-0DC09D?logo=nextflow&logoColor=white">
+  <img alt="python" src="https://img.shields.io/badge/CLI-Python-3776AB?logo=python&logoColor=white">
+  <img alt="platforms" src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-8A6D1C">
+  <img alt="status" src="https://img.shields.io/badge/status-research-9E2B25">
+</p>
 
-![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-![Nextflow](https://img.shields.io/badge/Nextflow-DSL2%20%E2%89%A523.10-23aa62.svg)
-![CLI: Python](https://img.shields.io/badge/CLI-Python-3776ab.svg)
+<p align="center"><b>A reproducible Nextflow pipeline for hybridization-capture probe (bait) design —<br>from a list of target genes to a synthesis-ready, QC'd bait set.</b></p>
+
+---
 
 ## Overview
 
 CaptureForge turns target genes and per-gene design intent into order-ready biotinylated-bait oligo sequences, a coverage BED, and a full QC report. It is disease- and organism-agnostic: point it at any gene list and a matching reference genome, and change inputs and config — never code. The scope is everything upstream of physical oligo synthesis; synthesis and wet-lab validation are out of scope.
 
 CaptureForge is the **design** half of a pair. Its `final_covered_targets.bed` handoff feeds **[CallForge](https://github.com/aduton1000/callforge)**, the downstream germline-analysis pipeline.
+
+## Pipeline
+
+```mermaid
+flowchart LR
+  GENES([gene list + design intent]) --> TGT[target definition]
+  TGT --> MASK[masking]
+  MASK --> TILE[candidate tiling]
+  TILE --> SPEC[specificity]
+  SPEC --> COMP[composition]
+  COMP --> GAP[gap re-tiling]
+  GAP --> BOOST[boost · dedup]
+  BOOST --> SCAF[synthesis scaffolding]
+  SCAF --> QC[QC aggregation]
+  QC --> ORDER[order package<br/>baits.fasta · targets.bed · QC]
+```
 
 ## Features
 
